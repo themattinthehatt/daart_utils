@@ -127,3 +127,13 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Pycharm project settings
+.idea
+
+# stuff to keep on my local machine
+scratch/
+sandbox/
+*~
+
+daart_utils/paths.py

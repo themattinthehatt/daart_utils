@@ -18,3 +18,22 @@ $: conda activate daart
 (daart) $: pip install -r requirements.txt
 (daart) $: pip install -e .
 ```
+
+## Set paths
+
+To set user-specific paths that the scripts and notebooks can read from, create a file named
+`daart_utils/daart_utils/paths.py` that looks like the following:
+
+```python
+
+# where daart config files are stored, i.e. `data.yaml`, `model.yaml`, and `train.yaml`
+config_path = '/home/mattw/.daart'
+
+# base path; for example, hand labels for a particular session are located at
+#
+# `base_path/[dataset]/hand-labels/[session_id]_labels.csv`
+#
+# where [dataset] is `ibl`, `fly`, etc.
+base_path = '/home/mattw/Dropbox/shared/segmentation-data'
+
+```

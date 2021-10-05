@@ -1,0 +1,12 @@
+h5py
+ipykernel
+matplotlib
+numpy
+pandas
+pyyaml
+scikit-learn
+scipy>=1.2.0
+seaborn
+test-tube
+torch==1.8.0
+tqdm

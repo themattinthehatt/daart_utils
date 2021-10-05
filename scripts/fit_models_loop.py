@@ -6,7 +6,7 @@ import argparse
 import shutil
 import yaml
 
-from daart_utils.paths import config_path
+from daart_utils.paths import data_path, config_path, results_path
 
 # assumes `fit_models_loop.py` and `fit_models.py` are in the same directory
 grid_search_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'fit_models.py')
@@ -63,6 +63,8 @@ def run_main(args):
             # modify configs
             update_config(config_files['model'], 'model_type', model_type)
             update_config(config_files['data'], 'expt_ids', expt_ids)
+            update_config(config_files['data'], 'data_dir', os.path.join(data_path, args.dataset))
+            update_config(config_files['data'], 'results_dir', os.path.join(results_path, args.dataset))
 
             call_str = [
                 'python',
@@ -91,6 +93,14 @@ def update_config(file, key, value):
 
 
 if __name__ == '__main__':
+                          
+    """To fit, for example, dtcn models on the IBL data:
+
+    (daart) $: python fit_models_loop.py --dataset ibl --fit_dtcn
+
+    The details of the hyperparameter search will be defined in the user config files.
+
+    """
 
     parser = argparse.ArgumentParser()
 

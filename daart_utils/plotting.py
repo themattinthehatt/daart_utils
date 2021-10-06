@@ -1,4 +1,4 @@
-"""daart plotting functions."""
+"""Plotting functions for daart models."""
 
 import matplotlib.pyplot as plt
 import numpy as np

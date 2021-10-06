@@ -1,3 +1,4 @@
+cv2
 h5py
 ipykernel
 matplotlib

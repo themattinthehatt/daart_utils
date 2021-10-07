@@ -6,7 +6,7 @@ import seaborn as sns
 
 
 def plot_heatmaps(
-        df, metric, expt_ids, title='', kind=1, n_cols=2, center=False, vmin=0, vmax=1, agg='mean',
+        df, metric, sess_ids, title='', kind=1, n_cols=2, center=False, vmin=0, vmax=1, agg='mean',
         annot=False, cmaps=None, save_file=None, **kwargs):
     """Plot a heatmap of model performance as a function of hyperparameters
 
@@ -16,7 +16,7 @@ def plot_heatmaps(
         must include the following columns: label, lambda_weak, lambda_pred, `metric`, expt_id
     metric : str
         metric whose values will be displayed with heatmap; column name in `df`
-    expt_ids : list
+    sess_ids : list
     title : str
     kind : int
         1: plot heatmap for each label, expt id
@@ -45,7 +45,7 @@ def plot_heatmaps(
     if kind == 1:
 
         # plot heatmap for each label, expt id
-        for expt_id in expt_ids:
+        for sess_id in sess_ids:
 
             fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols + 1, 4 * n_rows + 1))
             axes = axes.flatten()
@@ -53,12 +53,12 @@ def plot_heatmaps(
                 ax.set_axis_off()
             for l, label_name in enumerate(label_names):
                 axes[l].set_axis_on()
-                data_tmp = df[(df.label == label_name) & (df.expt_id == expt_id)].pivot(
+                data_tmp = df[(df.label == label_name) & (df.expt_id == sess_id)].pivot(
                     'lambda_weak', 'lambda_pred', metric)
                 sns.heatmap(data_tmp, vmin=vmin, vmax=vmax, ax=axes[l], annot=annot, **kwargs)
                 axes[l].invert_yaxis()
                 axes[l].set_title(label_name)
-            fig.suptitle('%s %s' % (expt_id, title))
+            fig.suptitle('%s %s' % (sess_id, title))
             plt.tight_layout()
             plt.show()
 

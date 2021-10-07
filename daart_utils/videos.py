@@ -6,12 +6,14 @@ a video with ffmpeg.
 """
 
 import matplotlib.pyplot as plt
+import numpy as np
 import os
 import shutil
+from tqdm import tqdm
 
 
-def make_labeled_video(save_file, frames, points, framerate=20, height=4):
-    """Behavioral video overlaid with markers.
+def make_labeled_video(save_file, frames, markers=None, labels=None, framerate=20, height=4):
+    """Behavioral video overlaid with markers and discrete labels.
 
     Parameters
     ----------
@@ -19,11 +21,14 @@ def make_labeled_video(save_file, frames, points, framerate=20, height=4):
         absolute path of filename (including extension)
     frames : np.ndarray
         array of shape (n_frames, n_channels, ypix, xpix)
-    points : dict
-        keys of marker names and vals of marker values, i.e. `points['paw_l'].shape = (n_t, 2)`
-    framerate : float
+    markers : dict, optional
+        keys of marker names and vals of marker values, i.e. `markers[<bodypart>].shape = (n_t, 2)`
+    labels : dict, optional
+        keys of label names and vals of label presence, i.e. `labels[<label>].shape = (n_t,)` and
+        is a boolean array
+    framerate : float, optional
         framerate of video
-    height : float
+    height : float, optional
         height of movie in inches
 
     """
@@ -44,27 +49,284 @@ def make_labeled_video(save_file, frames, points, framerate=20, height=4):
     ax.set_ylim([img_height, 0])
     plt.subplots_adjust(wspace=0, hspace=0, left=0, bottom=0, right=1, top=1)
 
-    for n in range(n_frames):
+    txt_kwargs = {
+        'fontsize': 16, 'color': [1, 1, 1], 'horizontalalignment': 'left',
+        'verticalalignment': 'top', 'fontname': 'monospace', 'transform': ax.transAxes}
+
+    for n in tqdm(range(n_frames)):
 
         ax.clear()  # important!! otherwise each frame will plot on top of the last
 
-        if n % 100 == 0:
-            print('processing frame %03i/%03i' % (n, n_frames))
-
         # plot original frame
         ax.imshow(frames[n, 0], vmin=0, vmax=255, cmap='gray')
+
         # plot markers
-        for m, (marker_name, marker_vals) in enumerate(points.items()):
-            ax.plot(
-                marker_vals[n, 0], marker_vals[n, 1], 'o', markersize=8)
+        if markers is not None:
+            for m, (marker_name, marker_vals) in enumerate(markers.items()):
+                ax.plot(marker_vals[n, 0], marker_vals[n, 1], 'o', markersize=8)
+
+        # annotate with labels
+        if labels is not None:
+            # collect all labels present on this frame
+            label_txt = ''
+            for label_name, label_vals in labels.items():
+                if label_vals[n] == 1:
+                    label_txt += '%s\n' % label_name
+            # plot label string
+            ax.text(0.05, 0.95, label_txt, **txt_kwargs)
 
         plt.savefig(os.path.join(tmp_dir, 'frame_%06i.jpeg' % n))
 
     save_video(save_file, tmp_dir, framerate)
 
 
-def make_syllable_video():
-    pass
+def make_syllable_video(
+        save_file, labels, video_obj, min_threshold=5, n_buffer=5, n_pre_frames=3, max_frames=1000,
+        single_label=None, label_mapping=None, probs=None, framerate=20):
+    """Composite video shows many clips belonging to same behavioral class, one panel per class.
+
+    Adapted from:
+    https://github.com/themattinthehatt/behavenet/blob/master/behavenet/plotting/arhmm_utils.py#L360
+
+    Parameters
+    ----------
+    save_file : str
+        absolute path of filename (including extension)
+    labels : array-like
+        discrete labels for each time points, shape (n_t,)
+    video_obj : daart_utils.data.Video object
+        contains function to load frames
+    min_threshold : int, optional
+        minimum length of syllable clips
+    n_buffer : int, optional
+        number of black frames between clips
+    n_pre_frames : int, optional
+        nunber of frames before syllable onset
+    max_frames : int, optional
+        length of video
+    single_label : int, optional
+        choose only a single label for movie; if NoneType, all labels included
+    label_mapping : dict
+        mapping from label number to label name
+    probs : array-like
+        probability of each label
+    framerate : float, optional
+        framerate of video
+
+    """
+
+    import matplotlib.animation as animation
+    from matplotlib.animation import FFMpegWriter
+
+    frame_idxs = [np.arange(len(labels))]
+    xpix = video_obj.frame_width
+    ypix = video_obj.frame_height
+
+    # separate labels
+    if not isinstance(labels, list):
+        labels = [labels]
+    label_idxs = _get_label_runs(labels)
+    K = len(label_idxs)
+
+    # get all example over threshold
+    np.random.seed(0)
+    labels_list = [[] for _ in range(K)]
+    for curr_label in range(K):
+        if label_idxs[curr_label].shape[0] > 0:
+            # grab all good bouts
+            good_bouts_idxs = np.where(
+                np.diff(label_idxs[curr_label][:, 1:3], 1) > min_threshold)[0]
+            # randomize
+            np.random.shuffle(good_bouts_idxs)
+            labels_list[curr_label] = label_idxs[curr_label][good_bouts_idxs]
+
+    if single_label is not None:
+        K = 1
+        fig_width = 3
+    else:
+        fig_width = 10
+    n_rows = int(np.floor(np.sqrt(K)))
+    n_cols = int(np.ceil(K / n_rows))
+
+    # initialize syllable movie frames
+    plt.clf()
+    fig_dim_div = xpix * n_cols / fig_width
+    fig_width = (xpix * n_cols) / fig_dim_div
+    fig_height = (ypix * n_rows) / fig_dim_div
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(fig_width, fig_height))
+    for i, ax in enumerate(fig.axes):
+        ax.set_yticks([])
+        ax.set_xticks([])
+        if i >= K:
+            ax.set_axis_off()
+        # elif single_label is not None:
+        #     ax.set_title('Syllable %i' % single_label, fontsize=16)
+        # else:
+        #     ax.set_title('Syllable %i' % i, fontsize=16)
+    # fig.tight_layout(pad=0, h_pad=1)
+    plt.subplots_adjust(wspace=0, hspace=0, left=0, bottom=0, right=1, top=1)
+
+    # hard coded params
+    im_kwargs = {'animated': True, 'vmin': 0, 'vmax': 255, 'cmap': 'gray'}
+
+    txt_kwargs = {
+        'fontsize': 14, 'color': [1, 1, 1], 'horizontalalignment': 'left',
+        'verticalalignment': 'top', 'fontname': 'monospace',
+        'bbox': dict(facecolor='k', alpha=0.25, edgecolor='none')}
+    txt_offset_x = 10
+    txt_offset_y = 5
+
+    txt_fr_kwargs = {
+        'fontsize': 14, 'color': [1, 1, 1], 'horizontalalignment': 'left',
+        'verticalalignment': 'bottom', 'fontname': 'monospace',
+        'bbox': dict(facecolor='k', alpha=0.25, edgecolor='none')}
+    txt_offset_x_fr = 10
+    txt_offset_y_fr = ypix - 5
+
+    # loop through syllables
+    ims = [[] for _ in range(max_frames + 500)]
+    for i_k, ax in enumerate(fig.axes):
+
+        # skip if no syllable in this axis
+        if i_k >= K:
+            continue
+
+        print('processing syllable %i/%i' % (i_k + 1, K))
+
+        if single_label is not None:
+            i_k = single_label
+
+        if len(labels_list[i_k]) == 0:
+            continue
+
+        if K < 10:
+            label_txt = '%i' % i_k if label_mapping is None else label_mapping[i_k]
+        else:
+            label_txt = '%02i' % i_k if label_mapping is None else label_mapping[i_k]
+
+        i_chunk = 0
+        i_frame = 0
+        while i_frame < max_frames:
+
+            if i_chunk >= len(labels_list[i_k]):
+                if single_label is not None:
+                    # no more plotting
+                    break
+                else:
+                    # plot black
+                    im = ax.imshow(np.zeros((ypix, xpix)), **im_kwargs)
+                    ims[i_frame].append(im)
+                    i_frame += 1
+            else:
+                # get indices into label chunk
+                i_idx = labels_list[i_k][i_chunk, 0]
+                i_beg = labels_list[i_k][i_chunk, 1]
+                i_end = labels_list[i_k][i_chunk, 2]
+                # use these to get indices into frames
+                m_beg = frame_idxs[i_idx][max(0, i_beg - n_pre_frames)]
+                m_end = frame_idxs[i_idx][i_end]
+                # grab movie chunk
+                movie_chunk = video_obj.get_frames_from_idxs(np.arange(m_beg, m_end))[:, 0, :, :]
+
+                # basic error check
+                i_non_k = labels[i_idx][i_beg:i_end] != i_k
+                if np.any(i_non_k):
+                    raise ValueError('Misaligned labels for syllable segmentation')
+
+                # loop over this chunk
+                for i in range(movie_chunk.shape[0]):
+
+                    # in case chunk is too long
+                    if i_frame >= max_frames:
+                        continue
+
+                    im = ax.imshow(movie_chunk[i], **im_kwargs)
+                    ims[i_frame].append(im)
+
+                    # text on top: state
+                    if probs is not None:
+                        label_txt_tmp = '%s: %1.2f' % (label_txt, probs[m_beg + i, i_k])
+                    else:
+                        label_txt_tmp = label_txt
+                    im = ax.text(txt_offset_x, txt_offset_y, label_txt_tmp, **txt_kwargs)
+                    ims[i_frame].append(im)
+
+                    # text on bottom: frame
+                    frame_txt = 'frame %i' % (m_beg + i)
+                    im = ax.text(txt_offset_x_fr, txt_offset_y_fr, frame_txt, **txt_fr_kwargs)
+                    ims[i_frame].append(im)
+
+                    i_frame += 1
+
+                # add buffer black frames
+                for j in range(n_buffer):
+                    # in case chunk is too long
+                    if i_frame >= max_frames:
+                        continue
+                    im = ax.imshow(np.zeros((ypix, xpix)), **im_kwargs)
+                    ims[i_frame].append(im)
+                    if single_label is None:
+                        im = ax.text(txt_offset_x, txt_offset_y, label_txt, **txt_kwargs)
+                        ims[i_frame].append(im)
+                    i_frame += 1
+
+                i_chunk += 1
+
+    print('creating animation...', end='')
+    ani = animation.ArtistAnimation(
+        fig, [ims[i] for i in range(len(ims)) if ims[i] != []],
+        blit=True, repeat=False)
+    print('done')
+    print('saving video to %s...' % save_file, end='')
+    writer = FFMpegWriter(fps=framerate, bitrate=-1)
+    if not os.path.exists(os.path.dirname(save_file)):
+        os.makedirs(os.path.dirname(save_file))
+    ani.save(save_file, writer=writer)
+    print('done')
+
+
+def _get_label_runs(labels):
+    """Find occurrences of each discrete label.
+
+    Adapted from:
+    https://github.com/themattinthehatt/behavenet/blob/master/behavenet/plotting/arhmm_utils.py#L24
+
+    Parameters
+    ----------
+    labels : list
+        each entry is numpy array containing discrete label for each frame
+
+    Returns
+    -------
+    list
+        list of length discrete labels, each list contains all occurences of that discrete label by
+        [chunk number, starting index, ending index]
+
+    """
+
+    max_label = np.max([np.max(s) for s in labels])
+    indexing_list = [[] for _ in range(max_label + 1)]
+
+    for i_chunk, chunk in enumerate(labels):
+
+        # pad either side so we get start and end chunks
+        chunk = np.pad(chunk, (1, 1), mode='constant', constant_values=-1)
+        # don't add 1 because of start padding, now index in original unpadded data
+        split_indices = np.where(np.ediff1d(chunk) != 0)[0]
+        # last index will be 1 higher that it should be due to padding
+        split_indices[-1] -= 1
+
+        for i in range(len(split_indices) - 1):
+
+            # get which label this chunk was (+1 because data is still padded)
+            which_label = chunk[split_indices[i] + 1]
+
+            indexing_list[which_label].append([i_chunk, split_indices[i], split_indices[i + 1]])
+
+    # convert lists to numpy arrays
+    indexing_list = [np.asarray(indexing_list[i_label]) for i_label in range(max_label + 1)]
+
+    return indexing_list
 
 
 def save_video(save_file, tmp_dir, framerate=20):

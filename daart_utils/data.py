@@ -67,7 +67,7 @@ class DataHandler(object):
             pass
         elif self.base_path is not None:
             for ext in extensions:
-                filepath = os.path.join(self.base_path, 'videos', '%s.%s' % (expt_id, ext))
+                filepath = os.path.join(self.base_path, 'videos', '%s.%s' % (self.session_id, ext))
                 if os.path.exists(filepath):
                     break
         if filepath is None:
@@ -90,7 +90,7 @@ class DataHandler(object):
         elif self.base_path is not None:
             for ext in extensions:
                 filepath = os.path.join(
-                    self.base_path, 'markers', '%s_labeled.%s' % (expt_id, ext))
+                    self.base_path, 'markers', '%s_labeled.%s' % (self.session_id, ext))
                 if os.path.exists(filepath):
                     break
         if filepath is None:
@@ -113,7 +113,7 @@ class DataHandler(object):
         elif self.base_path is not None:
             for ext in extensions:
                 filepath = os.path.join(
-                    self.base_path, 'labels-hand', '%s_labels.%s' % (expt_id, ext))
+                    self.base_path, 'labels-hand', '%s_labels.%s' % (self.session_id, ext))
                 if os.path.exists(filepath):
                     break
         if filepath is None:
@@ -136,7 +136,7 @@ class DataHandler(object):
         elif self.base_path is not None:
             for ext in extensions:
                 filepath = os.path.join(
-                    self.base_path, 'labels-heuristic', '%s_labels.%s' % (expt_id, ext))
+                    self.base_path, 'labels-heuristic', '%s_labels.%s' % (self.session_id, ext))
                 if os.path.exists(filepath):
                     break
         if filepath is None:
@@ -144,13 +144,15 @@ class DataHandler(object):
                 'Must supply a filepath for labels with extension in {}'.format(extensions))
         self.heuristic_labels.load_labels(filepath)
 
-    def load_model_labels(self, filepath=None):
+    def load_model_labels(self, filepath=None, logits=True):
         """Load model labels.
 
         Parameters
         ----------
         filepath : str, optional
             use this to override automatic path computation
+        logits : bool
+            True if loaded values are raw logits; will be processed into one-hot vector
 
         """
         extensions = ['csv', 'pkl', 'pickle']
@@ -159,13 +161,13 @@ class DataHandler(object):
         elif self.base_path is not None:
             for ext in extensions:
                 filepath = os.path.join(
-                    self.base_path, 'labels-model', '%s_labels.%s' % (expt_id, ext))
+                    self.base_path, 'labels-model', '%s_labels.%s' % (self.session_id, ext))
                 if os.path.exists(filepath):
                     break
         if filepath is None:
             raise FileNotFoundError(
                 'Must supply a filepath for labels with extension in {}'.format(extensions))
-        self.model_labels.load_labels(filepath)
+        self.model_labels.load_labels(filepath, logits=logits)
 
     def load_all_data(
             self, load_video=True, load_markers=True, load_hand_labels=True,
@@ -188,14 +190,116 @@ class DataHandler(object):
             self.load_heuristic_labels()
             print('done')
 
-    def make_labeled_video(self):
-        # video (optional)
-        # markers (optional)
-        # most likely state (optional)
-        pass
+    def make_labeled_video(
+            self, save_file, idxs, include_markers=True, label_type='none', framerate=20,
+            height=4):
+        """Export raw video overlaid with markers.
 
-    def make_syllable_video(self):
-        pass
+        Parameters
+        ----------
+        save_file : str
+            absolute filename of path (including extension)
+        idxs : array-like
+            array of indices for video
+        include_markers : bool, optional
+            True to overlay markers on video
+        label_type : str, optional
+            select label that will appear in corner of video
+            'none' | 'hand' | 'heuristic' | 'model'
+        framerate : float, optional
+            framerate of video
+        height : float, optional
+            height of movie in inches
+
+        """
+
+        from daart_utils.videos import make_labeled_video
+
+        # select data for plotting
+        frames = self.video.get_frames_from_idxs(idxs)
+
+        if include_markers:
+            markers = {m: self.markers.vals[m][idxs] for m in self.markers.names}
+        else:
+            markers = None
+
+        if label_type == 'hand':
+            labels = {name: self.hand_labels.vals[idxs, l]
+                      for l, name in enumerate(self.hand_labels.names)}
+        elif label_type == 'heuristic':
+            labels = {name: self.heuristic_labels.vals[idxs, l]
+                      for l, name in enumerate(self.heuristic_labels.names)}
+        elif label_type == 'model':
+            labels = {name: self.model_labels.vals[idxs, l]
+                      for l, name in enumerate(self.model_labels.names)}
+        elif label_type == 'none' or label_type is None:
+            labels = None
+        else:
+            raise NotImplementedError('must choose from "none", "hand", "heuristic", "model"')
+
+        make_labeled_video(
+            save_file=save_file, frames=frames, markers=markers, labels=labels,
+            framerate=framerate, height=height)
+
+    def make_syllable_video(
+            self, save_file, label_type, save_states_separately=False, min_threshold=5, n_buffer=5,
+            n_pre_frames=3, max_frames=1000, framerate=20):
+        """
+
+        Parameters
+        ----------
+        save_file : str
+            absolute path of filename (including extension)
+        label_type : str
+            label type from which to extract syllables
+            'hand' | 'heuristic' | 'model'
+        save_states_separately : bool
+            True to make a video for each state; False to combine into a multi-panel video
+        min_threshold : int, optional
+            minimum length of label clips
+        n_buffer : int, optional
+            number of black frames between clips
+        n_pre_frames : int, optional
+            nunber of frames before syllable onset
+        max_frames : int, optional
+            length of video
+        framerate : float, optional
+            framerate of video
+
+        """
+
+        from daart_utils.videos import make_syllable_video
+
+        if label_type == 'hand':
+            labels = self.hand_labels.vals
+            names = self.hand_labels.names
+        elif label_type == 'heuristic':
+            labels = self.heuristic_labels.vals
+            names = self.heuristic_labels.names
+        elif label_type == 'model':
+            print('warning! probably want to threshold probabilities; need to implement')
+            labels = self.model_labels.vals
+            names = self.model_labels.names
+        else:
+            raise NotImplementedError('must choose from "hand", "heuristic", "model"')
+
+        # assume a single behavior per frame (can generalize later)
+        labels = np.argmax(labels, axis=1)
+        label_mapping = {l: name for l, name in enumerate(names)}
+
+        if save_states_separately:
+            for n in range(np.max(labels)):
+                make_syllable_video(
+                    save_file=save_file, labels=labels, video_obj=self.video,
+                    min_threshold=min_threshold, n_buffer=n_buffer, n_pre_frames=n_pre_frames,
+                    max_frames=max_frames, single_label=n, label_mapping=label_mapping,
+                    framerate=framerate)
+        else:
+            make_syllable_video(
+                save_file=save_file, labels=labels, video_obj=self.video,
+                min_threshold=min_threshold, n_buffer=n_buffer, n_pre_frames=n_pre_frames,
+                max_frames=max_frames, single_label=None, label_mapping=label_mapping,
+                framerate=framerate)
 
 
 class Video(object):
@@ -291,7 +395,7 @@ class Markers(object):
 
         # marker names
         # type : list of strs
-        self.marker_names = None
+        self.names = None
 
         # 2D markers
         # type : dict with keys `self.marker_names`, vals are arrays of shape (n_t, 2)
@@ -321,13 +425,13 @@ class Markers(object):
 
         if file_ext == 'csv':
             xs, ys, ls, marker_names = load_marker_csv(filepath)
-            self.marker_names = marker_names
+            self.names = marker_names
             for m, marker_name in enumerate(marker_names):
                 self.vals[marker_name] = np.concatenate([xs[:, m, None], ys[:, m, None]], axis=1)
                 self.likelihoods[marker_name] = ls[:, m]
         elif file_ext == 'h5':
             xs, ys, ls, marker_names = load_marker_h5(filepath)
-            self.marker_names = marker_names
+            self.names = marker_names
             for m, marker_name in enumerate(marker_names):
                 self.vals[marker_name] = np.concatenate([xs[:, m, None], ys[:, m, None]], axis=1)
                 self.likelihoods[marker_name] = ls[:, m]
@@ -352,7 +456,7 @@ class Labels(object):
 
         # label names
         # type : list of strs
-        self.label_names = None
+        self.names = None
 
         # dense representation of labels
         # type : np.ndarray
@@ -365,13 +469,15 @@ class Labels(object):
         # boolean check
         self.is_loaded = False
 
-    def load_labels(self, filepath):
+    def load_labels(self, filepath, logits=False):
         """Load labels from csv or pickle file.
 
         Parameters
         ----------
         filepath : str
             absolute path of label file
+        logits : bool
+            True if loaded values are raw logits; will be processed into one-hot vector
 
         """
         file_ext = filepath.split('.')[-1]
@@ -383,7 +489,13 @@ class Labels(object):
         else:
             raise ValueError('"%s" is an invalid file extension' % file_ext)
 
-        self.label_names = label_names
+        if logits:
+            # we need to convert from logits one-hot vector
+            from daart.transforms import MakeOneHot
+            most_likely = np.argmax(labels, axis=1)
+            labels = MakeOneHot()(most_likely)
+
+        self.names = label_names
         self.vals = labels
 
         # save filepath
@@ -445,11 +557,18 @@ def load_marker_h5(filepath):
         - marker names (list): name for each column of `x` and `y` matrices
 
     """
-    import h5py
-    with h5py.File(filepath, 'r') as f:
-        t = f['df_with_missing']['table'][()]
-    markers = np.concatenate([t[i][1][None, :] for i in range(len(t))])
-    marker_names = None
+    # import h5py
+    # with h5py.File(filepath, 'r') as f:
+    #     t = f['df_with_missing']['table'][()]
+    # markers = np.concatenate([t[i][1][None, :] for i in range(len(t))])
+    # marker_names = None
+    # xs = markers[:, 0::3]
+    # ys = markers[:, 1::3]
+    # ls = markers[:, 2::3]
+    import pandas as pd
+    df = pd.read_hdf(filepath)
+    marker_names = [d[1] for d in df.columns][0::3]
+    markers = df.to_numpy()
     xs = markers[:, 0::3]
     ys = markers[:, 1::3]
     ls = markers[:, 2::3]
@@ -480,7 +599,8 @@ def load_label_csv(filepath):
         - label names (list): name for each column in `labels` matrix
 
     """
-    labels = np.genfromtxt(filepath, delimiter=',', dtype=np.int, encoding=None, skip_header=1)
+    labels = np.genfromtxt(
+        filepath, delimiter=',', dtype=np.int, encoding=None, skip_header=1)[:, 1:]
     label_names = list(
         np.genfromtxt(filepath, delimiter=',', dtype=None, encoding=None, max_rows=1)[1:])
     return labels, label_names
@@ -504,6 +624,9 @@ def load_label_pkl(filepath):
     with open(filepath, 'rb') as f:
         data = pickle.load(f)
     labels = data['states']
-    label_dict = data['state_mapping']
+    try:
+        label_dict = data['state_mapping']
+    except KeyError:
+        label_dict = data['state_labels']
     label_names = [label_dict[i] for i in range(len(label_dict))]
     return labels, label_names

@@ -184,31 +184,38 @@ def make_syllable_video(
     txt_offset_y_fr = ypix - 5
 
     # loop through syllables
-    ims = [[] for _ in range(max_frames + 500)]
-    for i_k, ax in enumerate(fig.axes):
+    ims = [[] for _ in range(max_frames)]
+    for i_k, ax in tqdm(enumerate(fig.axes)):
 
-        # skip if no syllable in this axis
+        # plot black frames if no syllable in this axis
         if i_k >= K:
+            for i_frame in range(max_frames):
+                im = ax.imshow(np.zeros((ypix, xpix)), **im_kwargs)
+                ims[i_frame].append(im)
             continue
 
-        print('processing syllable %i/%i' % (i_k + 1, K))
-
+        # select correct label index
         if single_label is not None:
             i_k = single_label
 
+        # plot black frame if no frames exist for this label
         if len(labels_list[i_k]) == 0:
+            for i_frame in range(max_frames):
+                im = ax.imshow(np.zeros((ypix, xpix)), **im_kwargs)
+                ims[i_frame].append(im)
             continue
 
+        # get text for this label
         if K < 10:
             label_txt = '%i' % i_k if label_mapping is None else label_mapping[i_k]
         else:
             label_txt = '%02i' % i_k if label_mapping is None else label_mapping[i_k]
 
-        i_chunk = 0
-        i_frame = 0
+        i_clip = 0  # keep track of clip number
+        i_frame = 0  # keep track of overall number of frames
         while i_frame < max_frames:
 
-            if i_chunk >= len(labels_list[i_k]):
+            if i_clip >= len(labels_list[i_k]):
                 if single_label is not None:
                     # no more plotting
                     break
@@ -218,29 +225,29 @@ def make_syllable_video(
                     ims[i_frame].append(im)
                     i_frame += 1
             else:
-                # get indices into label chunk
-                i_idx = labels_list[i_k][i_chunk, 0]
-                i_beg = labels_list[i_k][i_chunk, 1]
-                i_end = labels_list[i_k][i_chunk, 2]
+                # get indices into clip
+                i_idx = labels_list[i_k][i_clip, 0]
+                i_beg = labels_list[i_k][i_clip, 1]
+                i_end = labels_list[i_k][i_clip, 2]
                 # use these to get indices into frames
                 m_beg = frame_idxs[i_idx][max(0, i_beg - n_pre_frames)]
                 m_end = frame_idxs[i_idx][i_end]
-                # grab movie chunk
-                movie_chunk = video_obj.get_frames_from_idxs(np.arange(m_beg, m_end))[:, 0, :, :]
+                # grab movie clip
+                movie_clip = video_obj.get_frames_from_idxs(np.arange(m_beg, m_end))[:, 0, :, :]
 
                 # basic error check
                 i_non_k = labels[i_idx][i_beg:i_end] != i_k
                 if np.any(i_non_k):
                     raise ValueError('Misaligned labels for syllable segmentation')
 
-                # loop over this chunk
-                for i in range(movie_chunk.shape[0]):
+                # loop over this clip
+                for i in range(movie_clip.shape[0]):
 
-                    # in case chunk is too long
+                    # in case clip is too long
                     if i_frame >= max_frames:
                         continue
 
-                    im = ax.imshow(movie_chunk[i], **im_kwargs)
+                    im = ax.imshow(movie_clip[i], **im_kwargs)
                     ims[i_frame].append(im)
 
                     # text on top: state
@@ -270,12 +277,11 @@ def make_syllable_video(
                         ims[i_frame].append(im)
                     i_frame += 1
 
-                i_chunk += 1
+                i_clip += 1
 
     print('creating animation...', end='')
     ani = animation.ArtistAnimation(
-        fig, [ims[i] for i in range(len(ims)) if ims[i] != []],
-        blit=True, repeat=False)
+        fig, [ims[i] for i in range(len(ims)) if ims[i] != []], blit=True, repeat=False)
     print('done')
     print('saving video to %s...' % save_file, end='')
     writer = FFMpegWriter(fps=framerate, bitrate=-1)

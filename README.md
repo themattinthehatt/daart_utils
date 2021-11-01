@@ -50,6 +50,10 @@ results_path = '/path/to/results'
 
 ```
 
+The scripts and notebooks will automatically replace the paths in the config files with the paths
+defined in this `paths.py` file.
+
+
 ## Fit models
 
 This package uses [test-tube](https://williamfalcon.github.io/test-tube/) for hyperparameter 
@@ -59,20 +63,20 @@ describing the training procedure.
  
 First copy/paste templates of the three config files from the `daart` directory into the location
 defined by `config_path` above (`data.yaml`, `model.yaml`, and `train.yaml`). The default fitting 
-script will expect dataset-specific data and train configs, so you should make copies of the above
-files named `data_fly.yaml` and `train_fly.yaml`, for example.
+script will expect dataset-specific data configs, so you should make copies of the above
+files named `data_fly.yaml`, for example.
 
 Next, configure the models you want to fit in the yaml files. The provided script will 
-automatically hyperparameter search over lists, so if you set `n_lags: [2, 4, 6]` in the model yaml
-then three models will be fit; if you additionally set `n_hid_units: [16, 32, 64]`, then all nine
-model combinations will be fit.
+automatically hyperparameter search over lists, so if you set `lambda_weak: [0, 1]` in the model yaml
+then two models will be fit; if you additionally set `lambda_pred: [0, 1]`, then all four model
+combinations will be fit.
 
 Once you have set the desired parameters in the config files, you can run the fitting script from 
-the command line by providing a dataset and a model type; for example, to fit a dTCN model on IBL 
+the command line by providing a dataset and a model type; for example, to fit a dTCN model on fly 
 data, run the following:
 
 ```
-(daart) $: python fit_models_loop.py --dataset ibl --fit_dtcn
+(daart) $: python fit_models_loop.py --dataset fly --fit_dtcn
 ```
 
 See the script for more details on options.

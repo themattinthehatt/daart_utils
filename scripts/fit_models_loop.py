@@ -22,7 +22,7 @@ def run_main(args):
         config_files = {
             'data': os.path.join(config_path, 'data_fly.yaml'),
             'model': os.path.join(config_path, 'model.yaml'),
-            'train': os.path.join(config_path, 'train_fly.yaml')
+            'train': os.path.join(config_path, 'train.yaml')
         }
     elif args.dataset == 'ibl':
         # import experiment ids from file
@@ -31,7 +31,7 @@ def run_main(args):
         config_files = {
             'data': os.path.join(config_path, 'data_ibl.yaml'),
             'model': os.path.join(config_path, 'model.yaml'),
-            'train': os.path.join(config_path, 'train_ibl.yaml')
+            'train': os.path.join(config_path, 'train.yaml')
         }
     else:
         raise NotImplementedError('"%s" is an invalid dataset' % args.dataset)

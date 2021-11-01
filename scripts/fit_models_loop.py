@@ -94,9 +94,9 @@ def update_config(file, key, value):
 
 if __name__ == '__main__':
                           
-    """To fit, for example, dtcn models on the IBL data:
+    """To fit, for example, dtcn models on the fly data:
 
-    (daart) $: python fit_models_loop.py --dataset ibl --fit_dtcn
+    (daart) $: python fit_models_loop.py --dataset fly --fit_dtcn
 
     The details of the hyperparameter search will be defined in the user config files.
 

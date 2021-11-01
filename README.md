@@ -33,9 +33,9 @@ config_path = '/path/to/configs'
 # ---------
 # for example, hand labels for a particular session are located at
 #
-# `data_path/[dataset]/hand-labels/[session_id]_labels.csv`
+# `data_path/<dataset>/hand-labels/<session_id>_labels.csv`
 #
-# where [dataset] is `ibl`, `fly`, etc.
+# where <dataset> is `ibl`, `fly`, etc.
 data_path = '/path/to/data'
 
 # results path
@@ -43,9 +43,9 @@ data_path = '/path/to/data'
 # for example, with the test-tube directory name 'grid-search' and a dtcn model,
 # model info will be stored in the directory
 #
-# `base_path/[dataset]/[session-id]/dtcn/grid-search/version_X`
+# `base_path/<dataset>/<session-id>/dtcn/grid-search/version_X`
 #
-# where [dataset] is `ibl`, `fly`, etc.
+# where <dataset> is `ibl`, `fly`, etc.
 results_path = '/path/to/results'
 
 ```
@@ -76,7 +76,7 @@ the command line by providing a dataset and a model type; for example, to fit a 
 data, run the following:
 
 ```
-(daart) $: python fit_models_loop.py --dataset fly --fit_dtcn
+(daart) $: python scripts/fit_models_loop.py --dataset fly --fit_dtcn
 ```
 
 See the script for more details on options.

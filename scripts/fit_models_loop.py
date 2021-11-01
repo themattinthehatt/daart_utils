@@ -16,8 +16,8 @@ def run_main(args):
 
     if args.dataset == 'fly':
         # import experiment ids from file
-        from daart_utils.session_ids.fly import EXPT_IDS_TRAIN_5
-        expt_ids_list = EXPT_IDS_TRAIN_5
+        from daart_utils.session_ids.fly import SESS_IDS_TRAIN_5
+        sess_ids_list = SESS_IDS_TRAIN_5
         # set config files
         config_files = {
             'data': os.path.join(config_path, 'data_fly.yaml'),
@@ -26,8 +26,8 @@ def run_main(args):
         }
     elif args.dataset == 'ibl':
         # import experiment ids from file
-        from daart_utils.session_ids.ibl import EXPT_IDS_TRAIN_5
-        expt_ids_list = EXPT_IDS_TRAIN_5
+        from daart_utils.session_ids.ibl import SESS_IDS_TRAIN_5
+        sess_ids_list = SESS_IDS_TRAIN_5
         config_files = {
             'data': os.path.join(config_path, 'data_ibl.yaml'),
             'model': os.path.join(config_path, 'model.yaml'),
@@ -58,11 +58,11 @@ def run_main(args):
 
     for model_type in model_types:
 
-        for expt_ids in expt_ids_list:
+        for sess_ids in sess_ids_list:
 
             # modify configs
             update_config(config_files['model'], 'model_type', model_type)
-            update_config(config_files['data'], 'expt_ids', expt_ids)
+            update_config(config_files['data'], 'expt_ids', sess_ids)
             update_config(config_files['data'], 'data_dir', os.path.join(data_path, args.dataset))
             update_config(config_files['data'], 'results_dir', os.path.join(results_path, args.dataset))
 

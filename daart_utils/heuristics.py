@@ -1,5 +1,9 @@
 """Compute heuristic labels from pose tracking outputs."""
 
+import numpy as np
+
+from daart_utils.utils import get_label_runs
+
 
 def fly(
         markers, ball_me, walk_thresh=0.5, still_thresh=0.05, groom_thresh=0.02, ab_thresh=0.5,
@@ -361,8 +365,8 @@ def oft(
     # ------------------------------------------------------
     # unsupported rear
     # ------------------------------------------------------
-    zs_unsupp = np.zeros_like(zs_supp)
-    zs_unsupp[(speed < speed_thresh) & ~zs_supp.astype('bool') & (nose_to_tail < rear_thresh)] = 1
+    zs_unsupp = np.zeros_like(zs_supp)  # no unsupported rear labels for now
+    # zs_unsupp[(speed < speed_thresh) & ~zs_supp.astype('bool') & (nose_to_tail < rear_thresh)] = 1
 
     # ------------------------------------------------------
     # grooming

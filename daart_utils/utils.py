@@ -257,3 +257,35 @@ def point_to_point_distance(p1, p2):
 
 def point_to_line_distance(pt, line_pt_1, line_pt_2):
     return np.cross(line_pt_2 - line_pt_1, pt - line_pt_1) / np.linalg.norm(line_pt_2 - line_pt_1)
+
+
+def polygon_area(pt1, pt2, pt3, pt4=None):
+    """Area of the polygon described by the given 2D points."""
+    assert pt1.shape[1] == 2
+    assert pt2.shape[1] == 2
+    assert pt3.shape[1] == 2
+    if pt4 is None:
+        area = 0.5 * np.abs(
+            pt1[:, 0] * pt2[:, 1] - pt1[:, 1] * pt2[:, 0] +
+            pt2[:, 0] * pt3[:, 1] - pt2[:, 1] * pt3[:, 0] +
+            pt3[:, 0] * pt1[:, 1] - pt3[:, 1] * pt1[:, 0])
+    else:
+        area = 0.5 * np.abs(
+            pt1[:, 0] * pt2[:, 1] - pt1[:, 1] * pt2[:, 0] +
+            pt2[:, 0] * pt3[:, 1] - pt2[:, 1] * pt3[:, 0] +
+            pt3[:, 0] * pt4[:, 1] - pt3[:, 1] * pt4[:, 0] +
+            pt4[:, 0] * pt1[:, 1] - pt4[:, 1] * pt1[:, 0])
+    return area
+
+
+def absolute_angle(pt1, pt2, pt3):
+    """Angle between the 2D vectors pt1-pt2 and pt3-pt2."""
+    assert pt1.shape[1] == 2
+    assert pt2.shape[1] == 2
+    assert pt3.shape[1] == 2
+    a = pt1 - pt2
+    b = pt3 - pt2
+    det = a[:, 0] * b[:, 1] - b[:, 0] * a[:, 1]
+    dot = a[:, 0] * b[:, 0] + a[:, 1] * b[:, 1]
+    angle = np.arctan(det / dot)
+    return angle

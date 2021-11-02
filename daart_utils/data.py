@@ -242,8 +242,9 @@ class DataHandler(object):
             framerate=framerate, height=height)
 
     def make_syllable_video(
-            self, save_file, label_type, include_markers=False, save_states_separately=False,
-            min_threshold=5, n_buffer=5, n_pre_frames=3, max_frames=1000, framerate=20):
+            self, save_file, label_type, include_markers=False, smooth_markers=False,
+            save_states_separately=False, min_threshold=5, n_buffer=5, n_pre_frames=3,
+            max_frames=1000, framerate=20):
         """
 
         Parameters
@@ -255,6 +256,8 @@ class DataHandler(object):
             'hand' | 'heuristic' | 'model'
         include_markers : bool or list
             True to overlay markers on video, or a list of marker names to include
+        smooth_markers : bool
+            True to first smooth markers with a savitzky-golay filter
         save_states_separately : bool
             True to make a video for each state; False to combine into a multi-panel video
         min_threshold : int, optional
@@ -270,6 +273,7 @@ class DataHandler(object):
 
         """
 
+        from daart_utils.utils import smooth_interpolate_signal_sg
         from daart_utils.videos import make_syllable_video
 
         if label_type == 'hand':
@@ -291,12 +295,16 @@ class DataHandler(object):
 
         if include_markers:
             if isinstance(include_markers, list):
-                markers = {m: self.markers.vals[m] for m in include_markers}
+                markers = {m: np.copy(self.markers.vals[m]) for m in include_markers}
             else:
-                markers = {m: self.markers.vals[m] for m in self.markers.names}
-            # get rid of low-likelihood markers
+                markers = {m: np.copy(self.markers.vals[m]) for m in self.markers.names}
             for name, val in markers.items():
                 markers[name][self.markers.likelihoods[name] < 0.75, :] = np.nan
+                if smooth_markers:
+                    for i in [0, 1]:
+                        markers[name][:, i] = smooth_interpolate_signal_sg(
+                            markers[name][:, i], window=31, order=3,
+                            interp_kind='linear')
         else:
             markers = None
 

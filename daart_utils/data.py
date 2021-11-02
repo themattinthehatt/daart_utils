@@ -294,6 +294,9 @@ class DataHandler(object):
                 markers = {m: self.markers.vals[m] for m in include_markers}
             else:
                 markers = {m: self.markers.vals[m] for m in self.markers.names}
+            # get rid of low-likelihood markers
+            for name, val in markers.items():
+                markers[name][self.markers.likelihoods[name] < 0.75, :] = np.nan
         else:
             markers = None
 
@@ -457,6 +460,36 @@ class Markers(object):
         self.path = filepath
 
         self.is_loaded = True
+
+    def smooth_interpolate_sg(
+            self, likelihood_thresh=0.75, window=31, order=3, interp_kind='linear'):
+        """Run savitzy-golay filter on markers, and interpolate through low-likelihood points.
+
+        Parameters
+        ----------
+        likelihood_thresh : float, optional
+            interpolate through timepoints where likelihoods are below threshold
+        window : int
+            window of polynomial fit for savitzy-golay filter
+        order : int
+            order of polynomial for savitzy-golay filter
+        interp_kind : str
+            type of interpolation for nans, e.g. 'linear', 'quadratic', 'cubic'
+
+        Returns
+        -------
+        dict
+
+        """
+        from daart_utils.utils import smooth_interpolate_signal_sg
+        markers_tmp = {m: np.copy(self.vals[m]) for m in self.names}
+        # get rid of low-likelihood markers
+        for name, val in markers_tmp.items():
+            markers_tmp[name][self.likelihoods[name] < likelihood_thresh, :] = np.nan
+            for i in [0, 1]:
+                markers_tmp[name][:, i] = smooth_interpolate_signal_sg(
+                    markers_tmp[name][:, i], window=window, order=order, interp_kind=interp_kind)
+        return markers_tmp
 
 
 class Labels(object):

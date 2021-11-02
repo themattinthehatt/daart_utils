@@ -11,6 +11,8 @@ import os
 import shutil
 from tqdm import tqdm
 
+from daart_utils.utils import get_label_runs
+
 
 def make_labeled_video(save_file, frames, markers=None, labels=None, framerate=20, height=4):
     """Behavioral video overlaid with markers and discrete labels.
@@ -32,7 +34,6 @@ def make_labeled_video(save_file, frames, markers=None, labels=None, framerate=2
         height of movie in inches
 
     """
-    import cv2
 
     tmp_dir = os.path.join(os.path.dirname(save_file), 'tmpZzZ')
     if not os.path.exists(tmp_dir):
@@ -127,7 +128,7 @@ def make_syllable_video(
     # separate labels
     if not isinstance(labels, list):
         labels = [labels]
-    label_idxs = _get_label_runs(labels)
+    label_idxs = get_label_runs(labels)
     K = len(label_idxs)
 
     # get all example over threshold
@@ -301,50 +302,6 @@ def make_syllable_video(
         os.makedirs(os.path.dirname(save_file))
     ani.save(save_file, writer=writer)
     print('done')
-
-
-def _get_label_runs(labels):
-    """Find occurrences of each discrete label.
-
-    Adapted from:
-    https://github.com/themattinthehatt/behavenet/blob/master/behavenet/plotting/arhmm_utils.py#L24
-
-    Parameters
-    ----------
-    labels : list
-        each entry is numpy array containing discrete label for each frame
-
-    Returns
-    -------
-    list
-        list of length discrete labels, each list contains all occurences of that discrete label by
-        [chunk number, starting index, ending index]
-
-    """
-
-    max_label = np.max([np.max(s) for s in labels])
-    indexing_list = [[] for _ in range(max_label + 1)]
-
-    for i_chunk, chunk in enumerate(labels):
-
-        # pad either side so we get start and end chunks
-        chunk = np.pad(chunk, (1, 1), mode='constant', constant_values=-1)
-        # don't add 1 because of start padding, now index in original unpadded data
-        split_indices = np.where(np.ediff1d(chunk) != 0)[0]
-        # last index will be 1 higher that it should be due to padding
-        split_indices[-1] -= 1
-
-        for i in range(len(split_indices) - 1):
-
-            # get which label this chunk was (+1 because data is still padded)
-            which_label = chunk[split_indices[i] + 1]
-
-            indexing_list[which_label].append([i_chunk, split_indices[i], split_indices[i + 1]])
-
-    # convert lists to numpy arrays
-    indexing_list = [np.asarray(indexing_list[i_label]) for i_label in range(max_label + 1)]
-
-    return indexing_list
 
 
 def save_video(save_file, tmp_dir, framerate=20):

@@ -5,6 +5,7 @@ matplotlib
 numpy
 pandas
 pyyaml
+scikit-image
 scikit-learn
 scipy>=1.2.0
 seaborn

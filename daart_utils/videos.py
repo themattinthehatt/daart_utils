@@ -81,8 +81,8 @@ def make_labeled_video(save_file, frames, markers=None, labels=None, framerate=2
 
 
 def make_syllable_video(
-        save_file, labels, video_obj, min_threshold=5, n_buffer=5, n_pre_frames=3, max_frames=1000,
-        single_label=None, label_mapping=None, probs=None, framerate=20):
+        save_file, labels, video_obj, markers=None, min_threshold=5, n_buffer=5, n_pre_frames=3,
+        max_frames=1000, single_label=None, label_mapping=None, probs=None, framerate=20):
     """Composite video shows many clips belonging to same behavioral class, one panel per class.
 
     Adapted from:
@@ -96,6 +96,8 @@ def make_syllable_video(
         discrete labels for each time points, shape (n_t,)
     video_obj : daart_utils.data.Video object
         contains function to load frames
+    markers : dict, optional
+        keys of marker names and vals of marker values, i.e. `markers[<bodypart>].shape = (n_t, 2)`
     min_threshold : int, optional
         minimum length of syllable clips
     n_buffer : int, optional
@@ -247,8 +249,18 @@ def make_syllable_video(
                     if i_frame >= max_frames:
                         continue
 
+                    # display frame
                     im = ax.imshow(movie_clip[i], **im_kwargs)
                     ims[i_frame].append(im)
+
+                    # marker overlay
+                    if markers is not None:
+                        n = m_beg + i  # absolute index
+                        ax.set_prop_cycle(None)  # reset color cycle
+                        for m, (marker_name, marker_vals) in enumerate(markers.items()):
+                            im = ax.plot(
+                                marker_vals[n, 0], marker_vals[n, 1], 'o', markersize=8)[0]
+                            ims[i_frame].append(im)
 
                     # text on top: state
                     if probs is not None:

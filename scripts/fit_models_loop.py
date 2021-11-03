@@ -15,26 +15,20 @@ grid_search_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'fi
 def run_main(args):
 
     if args.dataset == 'fly':
-        # import experiment ids from file
-        from daart_utils.session_ids.fly import SESS_IDS_TRAIN_5
-        sess_ids_list = SESS_IDS_TRAIN_5
-        # set config files
-        config_files = {
-            'data': os.path.join(config_path, 'data_fly.yaml'),
-            'model': os.path.join(config_path, 'model.yaml'),
-            'train': os.path.join(config_path, 'train.yaml')
-        }
+        from daart_utils.session_ids.fly import SESS_IDS_TRAIN_5 as sess_ids_list
     elif args.dataset == 'ibl':
-        # import experiment ids from file
-        from daart_utils.session_ids.ibl import SESS_IDS_TRAIN_5
-        sess_ids_list = SESS_IDS_TRAIN_5
-        config_files = {
-            'data': os.path.join(config_path, 'data_ibl.yaml'),
-            'model': os.path.join(config_path, 'model.yaml'),
-            'train': os.path.join(config_path, 'train.yaml')
-        }
+        from daart_utils.session_ids.ibl import SESS_IDS_TRAIN_5 as sess_ids_list
+    elif args.dataset == 'mouse-oft-aligned' or args.dataset == 'mouse-oft':
+        from daart_utils.session_ids.oft import SESS_IDS_TRAIN_10 as sess_ids_list
     else:
         raise NotImplementedError('"%s" is an invalid dataset' % args.dataset)
+
+    # set config file paths
+    config_files = {
+        'data': os.path.join(config_path, 'data_%s.yaml' % args.dataset),
+        'model': os.path.join(config_path, 'model.yaml'),
+        'train': os.path.join(config_path, 'train.yaml')
+    }
 
     # create temporary config files (will be updated each iteration, then deleted)
     configs_to_update = ['data', 'model', 'train']
@@ -104,7 +98,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
 
-    # define dataset to fit: 'fly', 'ibl'
+    # define dataset to fit: 'fly' | 'ibl' | 'mouse-oft' | 'mouse-oft-aligned'
     parser.add_argument('--dataset')
 
     # define models to run

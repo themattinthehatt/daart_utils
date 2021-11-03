@@ -84,18 +84,13 @@ class DataHandler(object):
             use this to override automatic path computation
 
         """
-        extensions = ['csv', 'h5', 'npy']
+
         if filepath is not None:
             pass
         elif self.base_path is not None:
-            for ext in extensions:
-                filepath = os.path.join(
-                    self.base_path, 'markers', '%s_labeled.%s' % (self.session_id, ext))
-                if os.path.exists(filepath):
-                    break
-        if filepath is None:
-            raise FileNotFoundError(
-                'Must supply a filepath for markers with extension in {}'.format(extensions))
+            filepath = self.get_marker_filepath()
+        else:
+            raise FileNotFoundError('Must supply a marker filepath if base_path not defined')
         self.markers.load_markers(filepath)
 
     def load_hand_labels(self, filepath=None):
@@ -189,6 +184,20 @@ class DataHandler(object):
             print('loading heuristic label data...', end='')
             self.load_heuristic_labels()
             print('done')
+
+    def get_marker_filepath(self):
+        """Search over different file extensions for markers."""
+        filepath = None
+        extensions = ['csv', 'h5', 'npy']
+        for ext in extensions:
+            filepath = os.path.join(
+                self.base_path, 'markers', '%s_labeled.%s' % (self.session_id, ext))
+            if os.path.exists(filepath):
+                break
+        if filepath is None:
+            raise FileNotFoundError(
+                'Must supply a filepath for markers with extension in {}'.format(extensions))
+        return filepath
 
     def make_labeled_video(
             self, save_file, idxs, include_markers=True, label_type='none', framerate=20,

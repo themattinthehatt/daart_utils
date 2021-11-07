@@ -295,7 +295,7 @@ class DataHandler(object):
             framerate=framerate, height=height)
 
     def make_syllable_video(
-            self, save_file, label_type, include_markers=False, smooth_markers=False,
+            self, save_file, label_type, include_markers=False, smooth_markers=False, markersize=8,
             save_states_separately=False, min_threshold=5, n_buffer=5, n_pre_frames=3,
             max_frames=1000, framerate=20):
         """
@@ -311,6 +311,8 @@ class DataHandler(object):
             True to overlay markers on video, or a list of marker names to include
         smooth_markers : bool
             True to first smooth markers with a savitzky-golay filter
+        markersize : float, optional
+            size of markers if plotted
         save_states_separately : bool
             True to make a video for each state; False to combine into a multi-panel video
         min_threshold : int, optional
@@ -367,15 +369,15 @@ class DataHandler(object):
             for n in range(np.max(labels)):
                 make_syllable_video(
                     save_file=save_file, labels=labels, video_obj=self.video, markers=markers,
-                    min_threshold=min_threshold, n_buffer=n_buffer, n_pre_frames=n_pre_frames,
-                    max_frames=max_frames, single_label=n, label_mapping=label_mapping,
-                    framerate=framerate)
+                    markersize=markersize, min_threshold=min_threshold, n_buffer=n_buffer,
+                    n_pre_frames=n_pre_frames, max_frames=max_frames, single_label=n,
+                    label_mapping=label_mapping, framerate=framerate)
         else:
             make_syllable_video(
                 save_file=save_file, labels=labels, video_obj=self.video, markers=markers,
-                min_threshold=min_threshold, n_buffer=n_buffer, n_pre_frames=n_pre_frames,
-                max_frames=max_frames, single_label=None, label_mapping=label_mapping,
-                framerate=framerate)
+                markersize=markersize, min_threshold=min_threshold, n_buffer=n_buffer,
+                n_pre_frames=n_pre_frames, max_frames=max_frames, single_label=None,
+                label_mapping=label_mapping, framerate=framerate)
 
 
 class Video(object):

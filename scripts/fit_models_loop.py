@@ -20,6 +20,8 @@ def run_main(args):
         from daart_utils.session_ids.ibl import SESS_IDS_TRAIN_5 as sess_ids_list
     elif args.dataset == 'mouse-oft-aligned' or args.dataset == 'mouse-oft':
         from daart_utils.session_ids.oft import SESS_IDS_TRAIN_10 as sess_ids_list
+    elif args.dataset == 'resident-intruder':
+        from daart_utils.session_ids.resident_intruder import SESS_IDS_TRAIN_9 as sess_ids_list
     else:
         raise NotImplementedError('"%s" is an invalid dataset' % args.dataset)
 
@@ -27,7 +29,7 @@ def run_main(args):
     config_files = {
         'data': os.path.join(config_path, 'data_%s.yaml' % args.dataset),
         'model': os.path.join(config_path, 'model.yaml'),
-        'train': os.path.join(config_path, 'train.yaml')
+        'train': os.path.join(config_path, 'train_%s.yaml' % args.dataset)
     }
 
     # create temporary config files (will be updated each iteration, then deleted)
@@ -98,7 +100,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
 
-    # define dataset to fit: 'fly' | 'ibl' | 'mouse-oft' | 'mouse-oft-aligned'
+    # define dataset to fit: 'fly' | 'ibl' | 'mouse-oft' | 'mouse-oft-aligned' | resident-intruder
     parser.add_argument('--dataset')
 
     # define models to run

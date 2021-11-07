@@ -82,15 +82,16 @@ def run_main(hparams, *args):
     data_gen = DataGenerator(
         hparams['expt_ids'], signals, transforms, paths, device=hparams['device'],
         batch_size=hparams['batch_size'], trial_splits=hparams['trial_splits'],
-        train_frac=hparams['train_frac'], batch_pad=hparams['batch_pad'])
+        train_frac=hparams['train_frac'], batch_pad=hparams['batch_pad'],
+        input_type=hparams.get('input_type', 'markers'))
     print(data_gen)
 
     # automatically compute input/output sizes from data
     hparams['input_size'] = data_gen.datasets[0].data['markers'][0].shape[1]
-    try:
-        hparams['output_size'] = data_gen.datasets[0].data['labels_strong'][0].shape[1]
-    except KeyError:
-        hparams['output_size'] = data_gen.datasets[0].data['labels_weak'][0].shape[1]
+    # try:
+    #     hparams['output_size'] = data_gen.datasets[0].data['labels_strong'][0].shape[1]
+    # except KeyError:
+    #     hparams['output_size'] = data_gen.datasets[0].data['labels_weak'][0].shape[1]
 
     # -------------------------------------
     # build model

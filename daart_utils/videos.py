@@ -82,8 +82,9 @@ def make_labeled_video(save_file, frames, markers=None, labels=None, framerate=2
 
 
 def make_syllable_video(
-        save_file, labels, video_obj, markers=None, min_threshold=5, n_buffer=5, n_pre_frames=3,
-        max_frames=1000, single_label=None, label_mapping=None, probs=None, framerate=20):
+        save_file, labels, video_obj, markers=None, markersize=8, min_threshold=5, n_buffer=5,
+        n_pre_frames=3, max_frames=1000, single_label=None, label_mapping=None, probs=None,
+        framerate=20):
     """Composite video shows many clips belonging to same behavioral class, one panel per class.
 
     Adapted from:
@@ -99,6 +100,8 @@ def make_syllable_video(
         contains function to load frames
     markers : dict, optional
         keys of marker names and vals of marker values, i.e. `markers[<bodypart>].shape = (n_t, 2)`
+    markersize : float, optional
+        size of markers if plotted
     min_threshold : int, optional
         minimum length of syllable clips
     n_buffer : int, optional
@@ -148,7 +151,7 @@ def make_syllable_video(
         fig_width = 3
     else:
         fig_width = 10
-    n_rows = int(np.floor(np.sqrt(K)))
+    n_rows = int(np.round(np.sqrt(K)))
     n_cols = int(np.ceil(K / n_rows))
 
     # initialize syllable movie frames
@@ -260,7 +263,8 @@ def make_syllable_video(
                         ax.set_prop_cycle(None)  # reset color cycle
                         for m, (marker_name, marker_vals) in enumerate(markers.items()):
                             im = ax.plot(
-                                marker_vals[n, 0], marker_vals[n, 1], 'o', markersize=8)[0]
+                                marker_vals[n, 0], marker_vals[n, 1], 'o',
+                                markersize=markersize)[0]
                             ims[i_frame].append(im)
 
                     # text on top: state

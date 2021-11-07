@@ -3,6 +3,7 @@
 import cv2
 import numpy as np
 import os
+import pandas as pd
 import pickle
 
 
@@ -43,6 +44,9 @@ class DataHandler(object):
 
         # object to handle 2D marker data
         self.markers = Markers()
+
+        # object to handle feature data
+        self.features = Features()
 
         # object to handle hand labels
         self.hand_labels = Labels()
@@ -92,6 +96,26 @@ class DataHandler(object):
         else:
             raise FileNotFoundError('Must supply a marker filepath if base_path not defined')
         self.markers.load_markers(filepath)
+
+    def load_features(self, filepath=None, dirname='features'):
+        """Load features (often derived from markers).
+
+        Parameters
+        ----------
+        filepath : str, optional
+            use this to override automatic path computation
+        dirname : str, optional
+            features located in `self.path_base/dirname/feature_file.csv`
+
+        """
+
+        if filepath is not None:
+            pass
+        elif self.base_path is not None:
+            filepath = self.get_feature_filepath(dirname=dirname)
+        else:
+            raise FileNotFoundError('Must supply a feature filepath if base_path not defined')
+        self.features.load_features(filepath)
 
     def load_hand_labels(self, filepath=None):
         """Load hand labels.
@@ -165,7 +189,7 @@ class DataHandler(object):
         self.model_labels.load_labels(filepath, logits=logits)
 
     def load_all_data(
-            self, load_video=True, load_markers=True, load_hand_labels=True,
+            self, load_video=True, load_markers=True, load_features=False, load_hand_labels=True,
             load_heuristic_labels=True):
         """Helper function to load video, markers, hand and heuristic labels."""
         if load_video:
@@ -175,6 +199,10 @@ class DataHandler(object):
         if load_markers:
             print('loading marker data...', end='')
             self.load_markers()
+            print('done')
+        if load_features:
+            print('loading features data...', end='')
+            self.load_features()
             print('done')
         if load_hand_labels:
             print('loading hand label data...', end='')
@@ -197,6 +225,20 @@ class DataHandler(object):
         if filepath is None:
             raise FileNotFoundError(
                 'Must supply a filepath for markers with extension in {}'.format(extensions))
+        return filepath
+
+    def get_feature_filepath(self, dirname='features'):
+        """Search over different file extensions for features."""
+        filepath = None
+        extensions = ['csv']
+        for ext in extensions:
+            filepath = os.path.join(
+                self.base_path, dirname, '%s_labeled.%s' % (self.session_id, ext))
+            if os.path.exists(filepath):
+                break
+        if filepath is None:
+            raise FileNotFoundError(
+                'Must supply a filepath for features with extension in {}'.format(extensions))
         return filepath
 
     def make_labeled_video(
@@ -228,6 +270,8 @@ class DataHandler(object):
         frames = self.video.get_frames_from_idxs(idxs)
 
         if include_markers:
+            if not self.markers.is_loaded:
+                raise ValueError('Cannot include markers if they are not loaded')
             markers = {m: self.markers.vals[m][idxs] for m in self.markers.names}
         else:
             markers = None
@@ -303,6 +347,8 @@ class DataHandler(object):
         label_mapping = {l: name for l, name in enumerate(names)}
 
         if include_markers:
+            if not self.markers.is_loaded:
+                raise ValueError('Cannot include markers if they are not loaded')
             if isinstance(include_markers, list):
                 markers = {m: np.copy(self.markers.vals[m]) for m in include_markers}
             else:
@@ -509,6 +555,50 @@ class Markers(object):
         return markers_tmp
 
 
+class Features(object):
+    """Simple class for loading/manipulating behavioral features."""
+
+    def __init__(self):
+
+        # marker names
+        # type : list of strs
+        self.names = None
+
+        # features
+        # type : np.ndarray
+        self.vals = None
+
+        # location of features
+        # type : str
+        self.path = None
+
+        # boolean check
+        self.is_loaded = False
+
+    def load_features(self, filepath):
+        """Load features from csv file.
+
+        Parameters
+        ----------
+        filepath : str
+            absolute path of feature file
+
+        """
+        file_ext = filepath.split('.')[-1]
+
+        if file_ext == 'csv':
+            vals, names = load_feature_csv(filepath)
+            self.vals = vals
+            self.names = names
+        else:
+            raise ValueError('"%s" is an invalid file extension' % file_ext)
+
+        # save filepath
+        self.path = filepath
+
+        self.is_loaded = True
+
+
 class Labels(object):
     """Simple class for loading/manipulating labels."""
 
@@ -591,13 +681,52 @@ def load_marker_csv(filepath):
         - marker names (list): name for each column of `x` and `y` matrices
 
     """
-    data = np.genfromtxt(filepath, delimiter=',', dtype=None, encoding=None)
-    marker_names = list(data[1, 1::3])
-    markers = data[3:, 1:].astype('float')  # get rid of headers, etc.
+    # data = np.genfromtxt(filepath, delimiter=',', dtype=None, encoding=None)
+    # marker_names = list(data[1, 1::3])
+    # markers = data[3:, 1:].astype('float')  # get rid of headers, etc.
+
+    # define first three rows as headers (as per DLC standard)
+    # drop first column ('scorer' at level 0) which just contains frame indices
+    df = pd.read_csv(filepath, header=[0, 1, 2]).drop(['scorer'], axis=1, level=0)
+    # collect marker names from multiindex header
+    marker_names = [c[1] for c in df.columns[::3]]
+    markers = df.values
     xs = markers[:, 0::3]
     ys = markers[:, 1::3]
     ls = markers[:, 2::3]
     return xs, ys, ls, marker_names
+
+
+def load_feature_csv(filepath):
+    """Load markers from csv file assuming the following format
+
+    --------------------------------------------------------------------------------
+        name   |     <f1>      |     <f2>      |     <f3>      |     <f4>      | ...
+    --------------------------------------------------------------------------------
+         0     |     34.5      |     125.4     |     0.921     |      98.4     | ...
+         .     |       .       |       .       |       .       |       .       | ...
+         .     |       .       |       .       |       .       |       .       | ...
+         .     |       .       |       .       |       .       |       .       | ...
+
+    Parameters
+    ----------
+    filepath : str
+        absolute path of csv file
+
+    Returns
+    -------
+    tuple
+        - x coordinates (np.ndarray): shape (n_t, n_bodyparts)
+        - y coordinates (np.ndarray): shape (n_t, n_bodyparts)
+        - likelihoods (np.ndarray): shape (n_t,)
+        - marker names (list): name for each column of `x` and `y` matrices
+
+    """
+    # drop first column which just contains frame indices
+    df = pd.read_csv(filepath).drop(['Unnamed: 0'], axis=1)
+    vals = df.values
+    feature_names = list(df.columns)
+    return vals, feature_names
 
 
 def load_marker_h5(filepath):

@@ -14,7 +14,9 @@ grid_search_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'fi
 
 def run_main(args):
 
-    if args.dataset == 'fly':
+    if args.dataset == 'fish':
+        from daart_utils.session_ids.fish import SESS_IDS_TRAIN_10 as sess_ids_list
+    elif args.dataset == 'fly':
         from daart_utils.session_ids.fly import SESS_IDS_TRAIN_5 as sess_ids_list
     elif args.dataset == 'ibl':
         from daart_utils.session_ids.ibl import SESS_IDS_TRAIN_5 as sess_ids_list
@@ -100,7 +102,8 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
 
-    # define dataset to fit: 'fly' | 'ibl' | 'mouse-oft' | 'mouse-oft-aligned' | resident-intruder
+    # define dataset to fit:
+    # 'fish' | 'fly' | 'ibl' | 'mouse-oft' | 'mouse-oft-aligned' | 'resident-intruder'
     parser.add_argument('--dataset')
 
     # define models to run

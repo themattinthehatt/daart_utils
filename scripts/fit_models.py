@@ -197,6 +197,8 @@ def create_tt_experiment(hparams):
     from test_tube import Experiment
 
     # get model path
+    if not os.path.isdir(hparams['results_dir']):
+        os.makedirs(hparams['results_dir'])
     hparams['expt_dir'] = get_expt_dir(hparams['results_dir'], hparams['expt_ids'])
     if not os.path.isdir(hparams['expt_dir']):
         os.makedirs(hparams['expt_dir'])

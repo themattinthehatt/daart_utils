@@ -657,7 +657,7 @@ class Labels(object):
 
 
 def load_marker_csv(filepath):
-    """Load markers from csv file assuming DLC format
+    """Load markers from csv file assuming DLC format.
 
     --------------------------------------------------------------------------------
        scorer  | <scorer_name> | <scorer_name> | <scorer_name> | <scorer_name> | ...
@@ -700,7 +700,7 @@ def load_marker_csv(filepath):
 
 
 def load_feature_csv(filepath):
-    """Load markers from csv file assuming the following format
+    """Load markers from csv file assuming the following format.
 
     --------------------------------------------------------------------------------
         name   |     <f1>      |     <f2>      |     <f3>      |     <f4>      | ...
@@ -724,15 +724,18 @@ def load_feature_csv(filepath):
         - marker names (list): name for each column of `x` and `y` matrices
 
     """
-    # drop first column which just contains frame indices
-    df = pd.read_csv(filepath).drop(['Unnamed: 0'], axis=1)
+    df = pd.read_csv(filepath)
+    # drop first column if it just contains frame indices
+    unnamed_col = 'Unnamed: 0'
+    if unnamed_col in list(df.columns):
+        df = df.drop([unnamed_col], axis=1)
     vals = df.values
     feature_names = list(df.columns)
     return vals, feature_names
 
 
 def load_marker_h5(filepath):
-    """Load markers from hdf5 file assuming DLC format
+    """Load markers from hdf5 file assuming DLC format.
 
     Parameters
     ----------
@@ -748,14 +751,6 @@ def load_marker_h5(filepath):
         - marker names (list): name for each column of `x` and `y` matrices
 
     """
-    # import h5py
-    # with h5py.File(filepath, 'r') as f:
-    #     t = f['df_with_missing']['table'][()]
-    # markers = np.concatenate([t[i][1][None, :] for i in range(len(t))])
-    # marker_names = None
-    # xs = markers[:, 0::3]
-    # ys = markers[:, 1::3]
-    # ls = markers[:, 2::3]
     import pandas as pd
     df = pd.read_hdf(filepath)
     marker_names = [d[1] for d in df.columns][0::3]

@@ -401,3 +401,72 @@ def oft(
         labels_smooth = labels
 
     return labels_smooth, label_mapping
+
+
+def resident_intruder(
+        features, feature_names, anogenital_thresh=10, int_sniff_thresh=20, smooth=True,
+        bout_thresh=5):
+    """Compute heuristics for resident-intruder behaviors.
+
+    NOTE: needs to be run on simba features, not markers
+
+    Parameters
+    ----------
+    features : np.ndarray
+    feature_names : np.ndarray
+    anogenital_thresh : float, optional
+    int_sniff_thresh : float, optional
+    smooth : bool, optional
+        if True, smooth data by dropping bouts with duration less than bout_thresh
+    bout_thresh : int, optional
+        minimum bout length to keep if smooth=True and n_hmms=0
+
+    Returns
+    -------
+    dict
+
+    """
+
+    # ------------------------------------------------------
+    # anogenital_sniffing
+    # ------------------------------------------------------
+    idx_feature = np.where(feature_names == 'M1_Nose_to_M2_tail_base')[0][0]
+    zs_agsniff = np.zeros((features.shape[0],))
+    zs_agsniff[features[:, idx_feature] < anogenital_thresh] = 1
+
+    # ------------------------------------------------------
+    # intruder_sniff
+    # ------------------------------------------------------
+    idx_feature = np.where(feature_names == 'M2_Nose_to_M1_tail_base')[0][0]
+    zs_intsniff = np.zeros_like(zs_agsniff)
+    zs_intsniff[features[:, idx_feature] < int_sniff_thresh] = 1
+
+    # ------------------------------------------------------
+    # collect states
+    # ------------------------------------------------------
+    labels = np.zeros_like(zs_agsniff, dtype='int')  # default state = 0: undefined
+    labels[zs_agsniff == 1] = 2
+    labels[zs_intsniff == 1] = 6
+    label_mapping = {
+        0: 'undefined',
+        1: 'attack',
+        2: 'anogenital_sniffing',
+        3: 'mounting',
+        4: 'allogrooming_normal',
+        5: 'allogroom_vigorous',
+        6: 'intruder_sniff'}
+
+    if smooth and bout_thresh > 0:
+        # only take runs longer than `bout_thresh` frames
+        idx_list = get_label_runs([labels])
+        # loop through classes
+        for idxs in idx_list:
+            # loop through instances
+            for idx in idxs:
+                if idx[2] - idx[1] < bout_thresh:
+                    labels[idx[1]:idx[2]] = 0  # set to background
+        labels_smooth = labels
+    else:
+        labels_smooth = labels
+
+    return labels_smooth, label_mapping

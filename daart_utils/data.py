@@ -503,23 +503,22 @@ class Markers(object):
 
         if file_ext == 'csv':
             xs, ys, ls, marker_names = load_marker_csv(filepath)
-            self.names = marker_names
-            for m, marker_name in enumerate(marker_names):
-                self.vals[marker_name] = np.concatenate([xs[:, m, None], ys[:, m, None]], axis=1)
-                self.likelihoods[marker_name] = ls[:, m]
         elif file_ext == 'h5':
             xs, ys, ls, marker_names = load_marker_h5(filepath)
-            self.names = marker_names
-            for m, marker_name in enumerate(marker_names):
-                self.vals[marker_name] = np.concatenate([xs[:, m, None], ys[:, m, None]], axis=1)
-                self.likelihoods[marker_name] = ls[:, m]
         elif file_ext == 'npy':
-            raise NotImplementedError
-            # assume single array
-            # vals = np.load(markers_path)
-            # marker_names = None
+            print('warning! assuming numpy array contains alternating columns of x-y coordinates')
+            vals = np.load(filepath)
+            xs = vals[:, 0::2]
+            ys = vals[:, 0::2]
+            ls = np.ones_like(xs)
+            marker_names = ['bp_%i' % i for i in range(xs.shape[1])]
         else:
             raise ValueError('"%s" is an invalid file extension' % file_ext)
+
+        self.names = marker_names
+        for m, marker_name in enumerate(marker_names):
+            self.vals[marker_name] = np.concatenate([xs[:, m, None], ys[:, m, None]], axis=1)
+            self.likelihoods[marker_name] = ls[:, m]
 
         # save filepath
         self.path = filepath

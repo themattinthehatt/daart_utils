@@ -307,7 +307,8 @@ def ibl(
 
 
 def oft(
-        markers, boundary_thresh=5, rear_thresh=50, speed_thresh=1, smooth=True, bout_thresh=5):
+        markers, pixels, boundary_thresh=5, rear_thresh=50, speed_thresh=1, shadow_thresh=1,
+        smooth=True, bout_thresh=5):
     """Compute heuristics for 3 oft behaviors: supported rear, unsupported rear, grooming.
 
     NOTE: needs to be run on raw markers (which includes arena corners), not aligned markers
@@ -315,9 +316,12 @@ def oft(
     Parameters
     ----------
     markers : np.ndarray
+    pixels : np.ndarray
+        shape (T, 2), first column is n_pixels mouse, second column is n_pixels shadow
     boundary_thresh : float, optional
     rear_thresh : float, optional
     speed_thresh : float, optional
+    shadow_thresh : float, optional
     smooth : bool, optional
         if True, smooth data by dropping bouts with duration less than bout_thresh
     bout_thresh : int, optional
@@ -365,14 +369,29 @@ def oft(
     # ------------------------------------------------------
     # unsupported rear
     # ------------------------------------------------------
+    # - distance of mouse to boundary is above a threshold (10-20); should be large to avoid
+    #   reflections being captured in connected component
+    # - speed of mouse is low (<2)
+    # - mouse pixels are small (<800) OR (shadow/body) ratio is > 1
     zs_unsupp = np.zeros_like(zs_supp)  # no unsupported rear labels for now
-    # zs_unsupp[(speed < speed_thresh) & ~zs_supp.astype('bool') & (nose_to_tail < rear_thresh)] = 1
+    shadow_body_ratio = pixels[:, 1] / pixels[:, 0]
+    zs_unsupp[
+        (mouse_to_boundary > 20)
+        & (speed < speed_thresh)
+        & (shadow_body_ratio > shadow_thresh)
+    ] = 1
 
     # ------------------------------------------------------
     # grooming
     # ------------------------------------------------------
-    zs_groom = np.zeros_like(zs_supp)  # no grooming labels for now
-    # zs_groom[(speed < speed_thresh) & ~zs_supp.astype('bool') & ()] = 1
+    zs_groom = np.zeros_like(zs_supp)
+    height_width_ratio = pixels[:, 2] / pixels[:, 3]
+    zs_groom[
+        (mouse_to_boundary > 20)
+        & (speed < speed_thresh / 2)
+        & (height_width_ratio > 1)
+        & ~zs_unsupp.astype('bool')
+    ] = 1
 
     # ------------------------------------------------------
     # collect states

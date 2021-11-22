@@ -356,7 +356,7 @@ class DataHandler(object):
             else:
                 markers = {m: np.copy(self.markers.vals[m]) for m in self.markers.names}
             for name, val in markers.items():
-                markers[name][self.markers.likelihoods[name] < 0.75, :] = np.nan
+                markers[name][self.markers.likelihoods[name] < 0.4, :] = np.nan
                 if smooth_markers:
                     for i in [0, 1]:
                         markers[name][:, i] = smooth_interpolate_signal_sg(
@@ -367,8 +367,9 @@ class DataHandler(object):
 
         if save_states_separately:
             for n in range(np.max(labels)):
+                save_file_ = save_file.replace('.mp4', '_%s.mp4' % names[n])
                 make_syllable_video(
-                    save_file=save_file, labels=labels, video_obj=self.video, markers=markers,
+                    save_file=save_file_, labels=labels, video_obj=self.video, markers=markers,
                     markersize=markersize, min_threshold=min_threshold, n_buffer=n_buffer,
                     n_pre_frames=n_pre_frames, max_frames=max_frames, single_label=n,
                     label_mapping=label_mapping, framerate=framerate)

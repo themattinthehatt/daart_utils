@@ -16,7 +16,7 @@ SESS_IDS_TEST = [
     'OFT_58',
 ]
 
-SESS_IDS_TRAIN_10 = [[  # choose sessions with most grooming (can be highly variable)
+SESS_IDS_TRAIN_10 = [[
     'OFT_5',
     'OFT_6',
     'OFT_11',

@@ -60,6 +60,8 @@ def run_main(hparams, *args):
             markers_file = os.path.join(hparams['data_dir'], input_type, expt_id + '_labeled.csv')
         if not os.path.exists(markers_file):
             markers_file = os.path.join(hparams['data_dir'], input_type, expt_id + '_labeled.npy')
+        if not os.path.exists(markers_file):
+            raise FileNotFoundError('could not find marker file for %s' % expt_id)
 
         # heuristic labels
         labels_file = os.path.join(

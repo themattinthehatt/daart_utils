@@ -1,14 +1,18 @@
 """Fit daart models (potentially searching hyperparameters on a set of data."""
 
+import copy
 import numpy as np
 import os
+import pickle
+from sklearn.ensemble import RandomForestClassifier
+import sys
+from test_tube import HyperOptArgumentParser
 import time
 import torch
+import yaml
 
 from daart.data import DataGenerator
-from daart.eval import plot_training_curves
 from daart.io import export_hparams
-from daart.models import Segmenter
 from daart.transforms import ZScore
 from daart.utils import compute_batch_pad
 
@@ -89,44 +93,77 @@ def run_main(hparams, *args):
     #     hparams['output_size'] = data_gen.datasets[0].data['labels_weak'][0].shape[1]
 
     # -------------------------------------
+    # extract data from generator as array
+    # -------------------------------------
+    data_dict, _ = get_data_by_dtype(data_gen, data_key='markers')
+    data_mat_train = np.vstack(data_dict['train'])
+
+    label_dict, _ = get_data_by_dtype(data_gen, data_key='labels_strong')
+    label_mat_train = np.vstack(label_dict['train'])
+
+    # -------------------------------------
     # build model
     # -------------------------------------
-    hparams['rng_seed_model'] = hparams['rng_seed_train']  # TODO: get rid of this
-    torch.manual_seed(hparams.get('rng_seed_model', 0))
-    model = Segmenter(hparams)
-    model.to(hparams['device'])
+    hparams['rng_seed_model'] = hparams['rng_seed_train']
+    np.random.seed(hparams['rng_seed_model'])
+    model = RandomForestClassifier(
+        n_estimators=2000, max_depth=6, max_features='auto', min_samples_leaf=5, bootstrap=True,
+        n_jobs=-1, random_state=hparams['rng_seed_model'])
     print(model)
 
     # -------------------------------------
     # train model
     # -------------------------------------
     t_beg = time.time()
-    model.fit(data_gen, save_path=model_save_path, **hparams)
+    # just select non-background points
+    model.fit(data_mat_train[label_mat_train > 0, :], label_mat_train[label_mat_train > 0])
     t_end = time.time()
     print('Fit time: %.1f sec' % (t_end - t_beg))
+
+    # save model
+    with open(os.path.join(model_save_path, 'best_val_model.pkl'), 'wb') as f:
+        pickle.dump(model, f)
 
     # update hparams upon successful training
     hparams['training_completed'] = True
     export_hparams(hparams)
 
-    # save training curves
-    if hparams.get('plot_train_curves', False):
-        print('\nExporting train/val plots...')
-        hparam_str = 'strong=%.1f_weak=%.1f_pred=%.1f' % (
-            hparams['lambda_strong'], hparams['lambda_weak'], hparams['lambda_pred'])
-        plot_training_curves(
-            os.path.join(model_save_path, 'metrics.csv'), dtype='train',
-            expt_ids=hparams['expt_ids'],
-            save_file=os.path.join(model_save_path, 'train_curves_%s' % hparam_str),
-            format='png')
-        plot_training_curves(
-            os.path.join(model_save_path, 'metrics.csv'), dtype='val',
-            expt_ids=hparams['expt_ids'],
-            save_file=os.path.join(model_save_path, 'val_curves_%s' % hparam_str),
-            format='png')
-
     # get rid of unneeded logging info
     clean_tt_dir(hparams)
+
+
+def get_data_by_dtype(data_generator, sess_idxs=0, data_key='markers'):
+    """Collect data from data generator and put into dictionary with dtypes for keys.
+
+    TODO ------
+
+    Parameters
+    ----------
+    data_generator : DataGenerator
+    sess_idxs : int or list
+        concatenate train/test/val data across one or more sessions
+    data_key : str
+        key into data generator object; 'markers' | 'labels_strong' | 'labels_weak'
+
+    Returns
+    -------
+    tuple
+        - data (dict): with keys 'train', 'val', 'test'
+        - trial indices (dict): with keys 'train', 'val', 'test'
+
+    """
+    if isinstance(sess_idxs, int):
+        sess_idxs = [sess_idxs]
+    dtypes = ['train', 'val', 'test']
+    data = {key: [] for key in dtypes}
+    trial_idxs = {key: [] for key in dtypes}
+    for sess_idx in sess_idxs:
+        dataset = data_generator.datasets[sess_idx]
+        for data_type in dtypes:
+            curr_idxs = dataset.batch_idxs[data_type]
+            trial_idxs[data_type] += list(curr_idxs)
+            data[data_type] += [dataset[i_trial][data_key][0][:] for i_trial in curr_idxs]
+    return data, trial_idxs
 
 
 if __name__ == '__main__':
@@ -142,17 +179,17 @@ if __name__ == '__main__':
 
     hyperparams = get_all_params()
 
-    if hyperparams.device == 'cuda':
-        if isinstance(hyperparams.gpus_vis, int):
-            gpu_ids = [str(hyperparams.gpus_vis)]
-        else:
-            gpu_ids = hyperparams.gpus_vis.split(';')
-        hyperparams.optimize_parallel_gpu(
-            run_main,
-            gpu_ids=gpu_ids)
-
-    elif hyperparams.device == 'cpu':
-        hyperparams.optimize_parallel_cpu(
-            run_main,
-            nb_trials=hyperparams.tt_n_cpu_trials,
-            nb_workers=hyperparams.tt_n_cpu_workers)
+    # if hyperparams.device == 'cuda':
+    #     if isinstance(hyperparams.gpus_vis, int):
+    #         gpu_ids = [str(hyperparams.gpus_vis)]
+    #     else:
+    #         gpu_ids = hyperparams.gpus_vis.split(';')
+    #     hyperparams.optimize_parallel_gpu(
+    #         run_main,
+    #         gpu_ids=gpu_ids)
+    #
+    # elif hyperparams.device == 'cpu':
+    hyperparams.optimize_parallel_cpu(
+        run_main,
+        nb_trials=hyperparams.tt_n_cpu_trials,
+        nb_workers=hyperparams.tt_n_cpu_workers)

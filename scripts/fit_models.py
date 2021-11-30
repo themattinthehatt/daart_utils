@@ -16,6 +16,7 @@ from daart_utils.testtube import get_all_params, print_hparams, create_tt_experi
 
 
 def run_main(hparams, *args):
+
     if not isinstance(hparams, dict):
         hparams = vars(hparams)
 
@@ -33,6 +34,12 @@ def run_main(hparams, *args):
     if hparams is None:
         print('Experiment exists! Aborting fit')
         return
+
+    # take care of subsampled expt_ids
+    if 'expt_ids_to_keep' not in hparams.keys():
+        hparams['expt_ids_to_keep'] = hparams['expt_ids']
+    else:
+        hparams['expt_ids_to_keep'] = hparams['expt_ids_to_keep'].split(';')
 
     # where model results will be saved
     model_save_path = hparams['tt_version_dir']
@@ -54,15 +61,20 @@ def run_main(hparams, *args):
         if not os.path.exists(markers_file):
             markers_file = os.path.join(hparams['data_dir'], input_type, expt_id + '_labeled.npy')
         if not os.path.exists(markers_file):
-            raise FileNotFoundError('could not find marker file for %s' % expt_id)
+            raise FileNotFoundError('could not find %s file for %s' % (input_type, expt_id))
 
         # heuristic labels
         labels_file = os.path.join(
             hparams['data_dir'], 'labels-heuristic', expt_id + '_labels.csv')
 
         # hand labels
-        hand_labels_file = os.path.join(
-            hparams['data_dir'], 'labels-hand', expt_id + '_labels.csv')
+        if expt_id not in hparams['expt_ids_to_keep']:
+            hand_labels_file = None
+        else:
+            hand_labels_file = os.path.join(
+                hparams['data_dir'], 'labels-hand', expt_id + '_labels.csv')
+            if not os.path.exists(hand_labels_file):
+                hand_labels_file = None
 
         # define data generator signals
         signals.append(['markers', 'labels_weak', 'labels_strong'])
@@ -70,7 +82,10 @@ def run_main(hparams, *args):
         paths.append([markers_file, labels_file, hand_labels_file])
 
     # compute padding needed to account for convolutions
-    hparams['batch_pad'] = compute_batch_pad(hparams)
+    if hparams['model_type'] == 'random-forest':
+        hparams['batch_pad'] = 0
+    else:
+        hparams['batch_pad'] = compute_batch_pad(hparams)
 
     # build data generator
     print('Loading data...')
@@ -88,42 +103,82 @@ def run_main(hparams, *args):
     # except KeyError:
     #     hparams['output_size'] = data_gen.datasets[0].data['labels_weak'][0].shape[1]
 
-    # -------------------------------------
-    # build model
-    # -------------------------------------
-    hparams['rng_seed_model'] = hparams['rng_seed_train']  # TODO: get rid of this
-    torch.manual_seed(hparams.get('rng_seed_model', 0))
-    model = Segmenter(hparams)
-    model.to(hparams['device'])
-    print(model)
+    if hparams['model_type'] == 'random-forest':
 
-    # -------------------------------------
-    # train model
-    # -------------------------------------
-    t_beg = time.time()
-    model.fit(data_gen, save_path=model_save_path, **hparams)
-    t_end = time.time()
-    print('Fit time: %.1f sec' % (t_end - t_beg))
+        import pickle
+        from sklearn.ensemble import RandomForestClassifier
+        from daart_utils.testtube import get_data_by_dtype
+
+        # -------------------------------------
+        # extract data from generator as array
+        # -------------------------------------
+        data_dict, _ = get_data_by_dtype(data_gen, data_key='markers', as_numpy=True)
+        data_mat_train = np.vstack(data_dict['train'])
+
+        label_dict, _ = get_data_by_dtype(data_gen, data_key='labels_strong', as_numpy=True)
+        label_mat_train = np.concatenate(label_dict['train'])
+
+        # -------------------------------------
+        # build model
+        # -------------------------------------
+        hparams['rng_seed_model'] = hparams['rng_seed_train']
+        np.random.seed(hparams['rng_seed_model'])
+        model = RandomForestClassifier(
+            n_estimators=6000, max_features='sqrt', criterion='entropy', min_samples_leaf=1,
+            bootstrap=True, n_jobs=-1, random_state=hparams['rng_seed_model'])
+        print(model)
+
+        # -------------------------------------
+        # train model
+        # -------------------------------------
+        t_beg = time.time()
+        # just select non-background points
+        model.fit(data_mat_train[label_mat_train > 0, :], label_mat_train[label_mat_train > 0])
+        t_end = time.time()
+        print('Fit time: %.1f sec' % (t_end - t_beg))
+
+        # save model
+        with open(os.path.join(model_save_path, 'best_val_model.pt'), 'wb') as f:
+            pickle.dump(model, f)
+
+    else:
+
+        # -------------------------------------
+        # build model
+        # -------------------------------------
+        hparams['rng_seed_model'] = hparams['rng_seed_train']  # TODO: get rid of this
+        torch.manual_seed(hparams.get('rng_seed_model', 0))
+        model = Segmenter(hparams)
+        model.to(hparams['device'])
+        print(model)
+
+        # -------------------------------------
+        # train model
+        # -------------------------------------
+        t_beg = time.time()
+        model.fit(data_gen, save_path=model_save_path, **hparams)
+        t_end = time.time()
+        print('Fit time: %.1f sec' % (t_end - t_beg))
+
+        # save training curves
+        if hparams.get('plot_train_curves', False):
+            print('\nExporting train/val plots...')
+            hparam_str = 'strong=%.1f_weak=%.1f_pred=%.1f' % (
+                hparams['lambda_strong'], hparams['lambda_weak'], hparams['lambda_pred'])
+            plot_training_curves(
+                os.path.join(model_save_path, 'metrics.csv'), dtype='train',
+                expt_ids=hparams['expt_ids'],
+                save_file=os.path.join(model_save_path, 'train_curves_%s' % hparam_str),
+                format='png')
+            plot_training_curves(
+                os.path.join(model_save_path, 'metrics.csv'), dtype='val',
+                expt_ids=hparams['expt_ids'],
+                save_file=os.path.join(model_save_path, 'val_curves_%s' % hparam_str),
+                format='png')
 
     # update hparams upon successful training
     hparams['training_completed'] = True
     export_hparams(hparams)
-
-    # save training curves
-    if hparams.get('plot_train_curves', False):
-        print('\nExporting train/val plots...')
-        hparam_str = 'strong=%.1f_weak=%.1f_pred=%.1f' % (
-            hparams['lambda_strong'], hparams['lambda_weak'], hparams['lambda_pred'])
-        plot_training_curves(
-            os.path.join(model_save_path, 'metrics.csv'), dtype='train',
-            expt_ids=hparams['expt_ids'],
-            save_file=os.path.join(model_save_path, 'train_curves_%s' % hparam_str),
-            format='png')
-        plot_training_curves(
-            os.path.join(model_save_path, 'metrics.csv'), dtype='val',
-            expt_ids=hparams['expt_ids'],
-            save_file=os.path.join(model_save_path, 'val_curves_%s' % hparam_str),
-            format='png')
 
     # get rid of unneeded logging info
     clean_tt_dir(hparams)

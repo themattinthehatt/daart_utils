@@ -3,6 +3,7 @@
 import numpy as np
 import os
 import pickle
+import yaml
 
 
 def compute_model_predictions(hparams, data_gen, save_states=False, overwrite_states=False):
@@ -43,19 +44,30 @@ def compute_model_predictions(hparams, data_gen, save_states=False, overwrite_st
     else:
         # load model
         model_file = os.path.join(version_dir, 'best_val_model.pt')
-        arch_file = os.path.join(version_dir, 'hparams.pkl')
-        # print('Loading model defined in %s' % arch_file)
-        with open(arch_file, 'rb') as f:
-            hparams_new = pickle.load(f)
-        hparams_new['device'] = hparams.get('device', 'cpu')
-        model = Segmenter(hparams_new)
-        model.load_parameters_from_file(model_file)
-        model.to(hparams_new['device'])
-        model.eval()
+        try:
+            arch_file = os.path.join(version_dir, 'hparams.pkl')
+            # print('Loading model defined in %s' % arch_file)
+            with open(arch_file, 'rb') as f:
+                hparams_new = pickle.load(f)
+        except FileNotFoundError:
+            arch_file = os.path.join(version_dir, 'hparams.yaml')
+            with open(arch_file, 'r') as f:
+                hparams_new = yaml.safe_load(f)
 
-        # compute predictions
-        predictions = model.predict_labels(data_gen)['labels']
-        predictions = np.argmax(np.vstack(predictions[0]), axis=1)
+        hparams_new['device'] = hparams.get('device', 'cpu')
+
+        if hparams_new['model_type'] == 'random-forest':
+            with open(os.path.join(model_file), 'rb') as f:
+                model = pickle.load(f)
+            predictions_ = predict_labels_with_rf(model, data_gen)
+            predictions = np.concatenate(predictions_[0])
+        else:
+            model = Segmenter(hparams_new)
+            model.load_parameters_from_file(model_file)
+            model.to(hparams_new['device'])
+            model.eval()
+            predictions = model.predict_labels(data_gen)['labels']
+            predictions = np.argmax(np.vstack(predictions[0]), axis=1)
 
         # save predictions
         if save_states:
@@ -108,3 +120,39 @@ def get_default_hparams(**kwargs):
     for key, val in kwargs.items():
         hparams[key] = val
     return hparams
+
+
+def predict_labels_with_rf(model, data_generator):
+    """
+
+    Parameters
+    ----------
+    model : sklearn.embedding.RandomForestClassifier object
+        trained model
+    data_generator : DataGenerator object
+        data generator to serve data batches
+
+    Returns
+    -------
+    list of lists
+        first list is over datasets; second list is over batches in the dataset; each element is a
+        numpy array of the predicted class
+
+    """
+
+    # initialize container for labels
+    labels = [[] for _ in range(data_generator.n_datasets)]
+    for sess, dataset in enumerate(data_generator.datasets):
+        labels[sess] = [np.array([]) for _ in range(dataset.n_trials)]
+
+    # partially fill container (gap trials will be included as nans)
+    dtypes = ['train', 'val', 'test']
+    for dtype in dtypes:
+        data_generator.reset_iterators(dtype)
+        for i in range(data_generator.n_tot_batches[dtype]):
+            data, sess = data_generator.next_batch(dtype)
+            predictors = data['markers'][0]
+            preds = model.predict(predictors.cpu().numpy())
+            labels[sess][data['batch_idx'].item()] = preds
+
+    return labels

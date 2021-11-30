@@ -2,6 +2,7 @@
 
 import os
 import sys
+from test_tube import HyperOptArgumentParser
 import yaml
 
 from daart.io import export_expt_info_to_csv
@@ -17,7 +18,7 @@ def get_all_params():
         raise ValueError('No command line arguments allowed other than config file names')
 
     def add_to_parser(parser, arg_name, value):
-        if arg_name == 'expt_ids':
+        if arg_name == 'expt_ids' or arg_name == 'expt_ids_to_keep':
             # treat expt_ids differently, want to parse full lists as one
             if isinstance(value, list):
                 value = ';'.join(value)
@@ -108,3 +109,44 @@ def clean_tt_dir(hparams):
     for subdir in subdirs:
         shutil.rmtree(os.path.join(version_dir, subdir))
     os.remove(os.path.join(version_dir, 'meta.experiment'))
+
+
+def get_data_by_dtype(data_generator, sess_idxs=None, data_key='markers', as_numpy=True):
+    """Collect data from data generator and put into dictionary with dtypes for keys.
+
+    Parameters
+    ----------
+    data_generator : DataGenerator
+    sess_idxs : int, list, or NoneType
+        concatenate train/test/val data across one or more sessions; defaults to None, which uses
+        all sessions in data generator
+    data_key : str
+        key into data generator object; 'markers' | 'labels_strong' | 'labels_weak'
+    as_numpy : bool
+        True to return numpy arrays, False to return pytorch tensors
+
+    Returns
+    -------
+    tuple
+        - data (dict): with keys 'train', 'val', 'test'
+        - trial indices (dict): with keys 'train', 'val', 'test'
+
+    """
+    if sess_idxs is None:
+        sess_idxs = list(range(len(data_generator)))
+    elif isinstance(sess_idxs, int):
+        sess_idxs = [sess_idxs]
+    dtypes = ['train', 'val', 'test']
+    data = {key: [] for key in dtypes}
+    trial_idxs = {key: [] for key in dtypes}
+    for sess_idx in sess_idxs:
+        dataset = data_generator.datasets[sess_idx]
+        for data_type in dtypes:
+            curr_idxs = dataset.batch_idxs[data_type]
+            trial_idxs[data_type] += list(curr_idxs)
+            if as_numpy:
+                data[data_type] += [
+                    dataset[curr_idx][data_key].cpu().numpy() for curr_idx in curr_idxs]
+            else:
+                data[data_type] += [dataset[curr_idx][data_key] for curr_idx in curr_idxs]
+    return data, trial_idxs

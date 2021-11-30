@@ -53,6 +53,8 @@ def run_main(args):
         model_types.append('lstm')
     if args.fit_gru:
         model_types.append('gru')
+    if args.fit_rf:
+        model_types.append('random-forest')
 
     for model_type in model_types:
 
@@ -63,6 +65,8 @@ def run_main(args):
             update_config(config_files['data'], 'expt_ids', sess_ids)
             update_config(config_files['data'], 'data_dir', os.path.join(data_path, args.dataset))
             update_config(config_files['data'], 'results_dir', os.path.join(results_path, args.dataset))
+            if model_type == 'random-forest':
+                update_config(config_files['train'], 'device', 'cpu')
 
             call_str = [
                 'python',
@@ -111,6 +115,7 @@ if __name__ == '__main__':
     parser.add_argument('--fit_lstm', action='store_true', default=False)
     parser.add_argument('--fit_gru', action='store_true', default=False)
     parser.add_argument('--fit_dtcn', action='store_true', default=False)
+    parser.add_argument('--fit_rf', action='store_true', default=False)
 
     namespace, _ = parser.parse_known_args()
     run_main(namespace)

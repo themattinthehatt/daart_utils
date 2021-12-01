@@ -39,7 +39,7 @@ def run_main(args):
     for config in configs_to_update:
         dirname = os.path.dirname(config_files[config])
         filename = os.path.basename(config_files[config]).split('.')[0]
-        tmp_file = os.path.join(dirname, filename + '_tmp.yaml')
+        tmp_file = os.path.join(dirname, '%s_tmp.yaml' % filename)
         shutil.copy(config_files[config], tmp_file)
         config_files[config] = tmp_file
 

@@ -9,6 +9,7 @@ from daart.data import DataGenerator
 from daart.eval import plot_training_curves
 from daart.io import export_hparams
 from daart.models import Segmenter
+from daart.train import Trainer
 from daart.transforms import ZScore
 from daart.utils import compute_batch_pad
 
@@ -156,7 +157,8 @@ def run_main(hparams, *args):
         # train model
         # -------------------------------------
         t_beg = time.time()
-        model.fit(data_gen, save_path=model_save_path, **hparams)
+        trainer = Trainer(**hparams)
+        trainer.fit(model, data_gen, save_path=model_save_path)
         t_end = time.time()
         print('Fit time: %.1f sec' % (t_end - t_beg))
 

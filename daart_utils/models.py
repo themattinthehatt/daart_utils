@@ -60,7 +60,7 @@ def compute_model_predictions(hparams, data_gen, save_states=False, overwrite_st
             with open(os.path.join(model_file), 'rb') as f:
                 model = pickle.load(f)
             predictions_ = predict_labels_with_rf(model, data_gen)
-            predictions = np.concatenate(predictions_[0])
+            predictions = predictions_[0]  # assume a single session
         else:
             model = Segmenter(hparams_new)
             model.load_parameters_from_file(model_file)
@@ -140,10 +140,10 @@ def predict_labels_with_rf(model, data_generator):
 
     """
 
-    # initialize container for labels
-    labels = [[] for _ in range(data_generator.n_datasets)]
+    # initialize container for inputs
+    inputs = [[] for _ in range(data_generator.n_datasets)]
     for sess, dataset in enumerate(data_generator.datasets):
-        labels[sess] = [np.array([]) for _ in range(dataset.n_trials)]
+        inputs[sess] = [np.array([]) for _ in range(dataset.n_trials)]
 
     # partially fill container (gap trials will be included as nans)
     dtypes = ['train', 'val', 'test']
@@ -151,8 +151,8 @@ def predict_labels_with_rf(model, data_generator):
         data_generator.reset_iterators(dtype)
         for i in range(data_generator.n_tot_batches[dtype]):
             data, sess = data_generator.next_batch(dtype)
-            predictors = data['markers'][0]
-            preds = model.predict(predictors.cpu().numpy())
-            labels[sess][data['batch_idx'].item()] = preds
+            inputs[sess][data['batch_idx'].item()] = data['markers'][0].cpu().numpy()
+
+    labels = [model.predict(np.vstack(ins)) for ins in inputs]
 
     return labels

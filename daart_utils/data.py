@@ -54,6 +54,9 @@ class DataHandler(object):
         # object to handle heuristic labels
         self.heuristic_labels = Labels()
 
+        # object to handle tasks
+        self.tasks = Features()
+
         # object to handle model labels
         self.model_labels = Labels()
 
@@ -163,6 +166,26 @@ class DataHandler(object):
                 'Must supply a filepath for labels with extension in {}'.format(extensions))
         self.heuristic_labels.load_labels(filepath)
 
+    def load_tasks(self, filepath=None, dirname='tasks'):
+        """Load tasks(often derived from markers).
+
+        Parameters
+        ----------
+        filepath : str, optional
+            use this to override automatic path computation
+        dirname : str, optional
+            features located in `self.path_base/dirname/tasks_file.csv`
+
+        """
+
+        if filepath is not None:
+            pass
+        elif self.base_path is not None:
+            filepath = self.get_task_filepath(dirname=dirname)
+        else:
+            raise FileNotFoundError('Must supply a task filepath if base_path not defined')
+        self.tasks.load_features(filepath)
+
     def load_model_labels(self, filepath=None, logits=True):
         """Load model labels.
 
@@ -239,6 +262,20 @@ class DataHandler(object):
         if filepath is None:
             raise FileNotFoundError(
                 'Must supply a filepath for features with extension in {}'.format(extensions))
+        return filepath
+
+    def get_task_filepath(self, dirname='tasks'):
+        """Search over different file extensions for tasks."""
+        filepath = None
+        extensions = ['csv']
+        for ext in extensions:
+            filepath = os.path.join(
+                self.base_path, dirname, '%s.%s' % (self.session_id, ext))
+            if os.path.exists(filepath):
+                break
+        if filepath is None:
+            raise FileNotFoundError(
+                'Must supply a filepath for tasks with extension in {}'.format(extensions))
         return filepath
 
     def make_labeled_video(

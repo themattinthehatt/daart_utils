@@ -6,7 +6,8 @@ import pickle
 import yaml
 
 
-def compute_model_predictions(hparams, data_gen, save_states=False, overwrite_states=False):
+def compute_model_predictions(
+        hparams, data_gen, verbose=False, save_states=False, overwrite_states=False):
     """Compute predictions given hparams dict and data generator. Optionally save/overwrite results.
 
     Parameters
@@ -16,6 +17,8 @@ def compute_model_predictions(hparams, data_gen, save_states=False, overwrite_st
         :func:daart_utils.models.get_default_hparams for an example.
     data_gen : daart.data.DataGenerator object
         data generator that serves markers to predict labels from
+    verbose: bool
+        print out results from `find_experiment`
     save_states : bool, optional
         True to save predictions in model directory
     overwrite_states : bool, optional
@@ -31,7 +34,7 @@ def compute_model_predictions(hparams, data_gen, save_states=False, overwrite_st
     from daart.io import find_experiment
     from daart.models import Segmenter
 
-    version_int = find_experiment(hparams)
+    version_int = find_experiment(hparams, verbose=verbose)
     if version_int is None:
         raise FileNotFoundError
     version_str = str('version_%i' % version_int)

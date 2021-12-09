@@ -89,7 +89,7 @@ def random_forest_search(
 
 def logistic_regression_search(
         features_train, targets_train, features_val=None, targets_val=None, l2_reg_list=[0],
-        verbose=True
+        max_iter=5000, verbose=True
 ):
     """Fit a series of logistic regression binary classifiers.
 
@@ -105,6 +105,8 @@ def logistic_regression_search(
         shape (n_samples,); if None, results dict will contain evaluation on train data
     l2_reg_list : list of int, optional
         l2 regularization parameter on weights
+    max_iter : int, optional
+        max number of iterations
     verbose : bool, optional
         print info along the way
 
@@ -121,7 +123,7 @@ def logistic_regression_search(
     index = 0
     for l2_reg in l2_reg_list:
 
-        model = LogisticRegression(penalty='l2', max_iter=1000, C=l2_reg)
+        model = LogisticRegression(penalty='l2', max_iter=max_iter, C=l2_reg)
         if verbose:
             print(model)
         t_beg = time.time()
@@ -154,7 +156,7 @@ def logistic_regression_search(
 def mlp_search(
         features_train, targets_train, features_val=None, targets_val=None,
         hidden_layers_list=[32], hidden_units_list=[32, 64], activation_list=['tanh'],
-        l2_reg_list=[1e-5], learning_rate_list=[1e-3], rng_seed=0,
+        l2_reg_list=[1e-5], learning_rate_list=[1e-3], max_iter=5000, batch_size=256, rng_seed=0,
         verbose=True
 ):
     """Fit a series of logistic regression binary classifiers.
@@ -179,6 +181,10 @@ def mlp_search(
         l2 regularization parameter on weights
     learning_rate_list : list of float, optional
         initial adam learning rate
+    max_iter : int, optional
+        max number of iterations
+    batch_size : int, optional
+        number of samples in sgd batch
     rng_seed : int, optional
         random seed for mlp model fitting
     verbose : bool, optional
@@ -205,8 +211,8 @@ def mlp_search(
                             activation=activation,
                             alpha=l2_reg,
                             learning_rate_init=learning_rate,
-                            batch_size=256,
-                            max_iter=1000,
+                            batch_size=batch_size,
+                            max_iter=max_iter,
                             random_state=rng_seed,
                         )
 

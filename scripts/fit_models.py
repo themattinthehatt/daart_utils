@@ -1,4 +1,4 @@
-"""Fit daart models (potentially searching hyperparameters on a set of data."""
+"""Fit daart models (potentially searching hyperparameters on a set of data)."""
 
 import numpy as np
 import os
@@ -54,6 +54,10 @@ def run_main(hparams, *args):
 
     for expt_id in hparams['expt_ids']:
 
+        signals_curr = []
+        transforms_curr = []
+        paths_curr = []
+
         # DLC markers or features (i.e. from simba)
         input_type = hparams.get('input_type', 'markers')
         markers_file = os.path.join(hparams['data_dir'], input_type, expt_id + '_labeled.h5')
@@ -62,25 +66,43 @@ def run_main(hparams, *args):
         if not os.path.exists(markers_file):
             markers_file = os.path.join(hparams['data_dir'], input_type, expt_id + '_labeled.npy')
         if not os.path.exists(markers_file):
-            raise FileNotFoundError('could not find %s file for %s' % (input_type, expt_id))
-
-        # heuristic labels
-        labels_file = os.path.join(
-            hparams['data_dir'], 'labels-heuristic', expt_id + '_labels.csv')
+            raise FileNotFoundError('could not find marker file for %s' % expt_id)
+        signals_curr.append('markers')
+        transforms_curr.append(ZScore())
+        paths_curr.append(markers_file)
 
         # hand labels
-        if expt_id not in hparams['expt_ids_to_keep']:
-            hand_labels_file = None
-        else:
-            hand_labels_file = os.path.join(
-                hparams['data_dir'], 'labels-hand', expt_id + '_labels.csv')
-            if not os.path.exists(hand_labels_file):
+        if hparams.get('lambda_strong', 0) > 0:
+            if expt_id not in hparams['expt_ids_to_keep']:
                 hand_labels_file = None
+            else:
+                hand_labels_file = os.path.join(
+                    hparams['data_dir'], 'labels-hand', expt_id + '_labels.csv')
+                if not os.path.exists(hand_labels_file):
+                    hand_labels_file = None
+            signals_curr.append('labels_strong')
+            transforms_curr.append(None)
+            paths_curr.append(hand_labels_file)
+
+        # heuristic labels
+        if hparams.get('lambda_weak', 0) > 0:
+            heur_labels_file = os.path.join(
+                hparams['data_dir'], 'labels-heuristic', expt_id + '_labels.csv')
+            signals_curr.append('labels_weak')
+            transforms_curr.append(None)
+            paths_curr.append(heur_labels_file)
+
+        # tasks
+        if hparams.get('lambda_task', 0) > 0:
+            tasks_labels_file = os.path.join(hparams['data_dir'], 'tasks', expt_id + '.csv')
+            signals_curr.append('tasks')
+            transforms_curr.append(ZScore())
+            paths_curr.append(tasks_labels_file)
 
         # define data generator signals
-        signals.append(['markers', 'labels_weak', 'labels_strong'])
-        transforms.append([ZScore(), None, None])
-        paths.append([markers_file, labels_file, hand_labels_file])
+        signals.append(signals_curr)
+        transforms.append(transforms_curr)
+        paths.append(paths_curr)
 
     # compute padding needed to account for convolutions
     if hparams['model_type'] == 'random-forest':
@@ -103,6 +125,15 @@ def run_main(hparams, *args):
     #     hparams['output_size'] = data_gen.datasets[0].data['labels_strong'][0].shape[1]
     # except KeyError:
     #     hparams['output_size'] = data_gen.datasets[0].data['labels_weak'][0].shape[1]
+    if hparams.get('lambda_task', 0) > 0:
+        task_size = 0
+        for batch in data_gen.datasets[0].data['tasks']:
+            if batch.shape[1] == 0:
+                continue
+            else:
+                task_size = batch.shape[1]
+                break
+        hparams['task_size'] = task_size
 
     if hparams['model_type'] == 'random-forest':
 
@@ -154,9 +185,15 @@ def run_main(hparams, *args):
         print(model)
 
         # -------------------------------------
-        # train model
+        # set up training callbacks
         # -------------------------------------
         callbacks = []
+        if hparams['enable_early_stop']:
+            from daart.callbacks import EarlyStopping
+            # Note that patience does not account for val check interval values greater than 1;
+            # for example, if val_check_interval=5 and patience=20, then the model will train
+            # for at least 5 * 20 = 100 epochs before training can terminate
+            callbacks.append(EarlyStopping(patience=hparams['early_stop_history']))
         if hparams.get('semi_supervised_algo', 'none') == 'pseudo_labels':
             from daart.callbacks import AnnealHparam, PseudoLabels
             if model.hparams['lambda_weak'] == 0:
@@ -168,6 +205,9 @@ def run_main(hparams, *args):
                 callbacks.append(PseudoLabels(
                     prob_threshold=hparams['prob_threshold'], epoch_start=hparams['anneal_start']))
 
+        # -------------------------------------
+        # train model + cleanup
+        # -------------------------------------
         t_beg = time.time()
         trainer = Trainer(**hparams, callbacks=callbacks)
         trainer.fit(model, data_gen, save_path=model_save_path)
@@ -177,8 +217,15 @@ def run_main(hparams, *args):
         # save training curves
         if hparams.get('plot_train_curves', False):
             print('\nExporting train/val plots...')
-            hparam_str = 'strong=%.1f_weak=%.1f_pred=%.1f' % (
-                hparams['lambda_strong'], hparams['lambda_weak'], hparams['lambda_pred'])
+            hparam_str = ''
+            if hparams.get('lambda_strong', 0) > 0:
+                hparam_str += 'strong=%.1f' % hparams['lambda_strong']
+            if hparams.get('lambda_weak', 0) > 0:
+                hparam_str += '_weak=%.1f' % hparams['lambda_weak']
+            if hparams.get('lambda_task', 0) > 0:
+                hparam_str += '_task=%.1f' % hparams['lambda_task']
+            if hparams.get('lambda_task', 0) > 0:
+                hparam_str += '_pred=%.1f' % hparams['lambda_pred']
             plot_training_curves(
                 os.path.join(model_save_path, 'metrics.csv'), dtype='train',
                 expt_ids=hparams['expt_ids'],

@@ -112,6 +112,7 @@ def get_default_hparams(**kwargs):
         'lambda_strong': 1,         # loss weight on hand label classification
         'lambda_weak': 1,           # loss weight on heuristic label classification
         'lambda_pred': 1,           # loss weight on next-step-ahead prediction
+        'lambda_task': 0,           # loss weight on task regression
         'bidirectional': True,      # for 'gru' and 'lstm' models
         'device': 'cpu',            # computational device on which to place model/data
         'dropout': 0.1,             # dropout for 'dtcn'

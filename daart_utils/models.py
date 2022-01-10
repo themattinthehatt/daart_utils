@@ -118,6 +118,9 @@ def get_default_hparams(**kwargs):
         'activation': 'lrelu',      # hidden unit activation function
         'batch_pad': 0,             # batch pad for convolutions; needs to be updated for non-rnns
         'tt_expt_dir': 'test',      # test-tube experiment directory name
+        'prob_threshold': 0.95,     # fixed probability threshold for pseudo-labels algorithm
+        'anneal_start': 10,         # epoch where semi-supervised loss weights begin annealing
+        'anneal_end': 20,           # epoch where semi-supervised loss weights end annealing
     }
     # update hparams with user-provided kwargs
     for key, val in kwargs.items():

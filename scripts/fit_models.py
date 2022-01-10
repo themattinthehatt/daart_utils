@@ -158,13 +158,15 @@ def run_main(hparams, *args):
         # -------------------------------------
         callbacks = []
         if hparams.get('semi_supervised_algo', 'none') == 'pseudo_labels':
+            from daart.callbacks import AnnealHparam, PseudoLabels
             if model.hparams['lambda_weak'] == 0:
-                raise ValueError('use lambda_weak in model.yaml to weight pseudo label loss')
-            callbacks.append(AnnealHparam(
-                hparams=model.hparams, key='lambda_weak', epoch_start=hparams['anneal_start'],
-                epoch_end=hparams['anneal_end']))
-            callbacks.append(PseudoLabels(
-                prob_threshold=hparams['prob_threshold'], epoch_start=hparams['anneal_start']))
+                print('warning! use lambda_weak in model.yaml to weight pseudo label loss')
+            else:
+                callbacks.append(AnnealHparam(
+                    hparams=model.hparams, key='lambda_weak', epoch_start=hparams['anneal_start'],
+                    epoch_end=hparams['anneal_end']))
+                callbacks.append(PseudoLabels(
+                    prob_threshold=hparams['prob_threshold'], epoch_start=hparams['anneal_start']))
 
         t_beg = time.time()
         trainer = Trainer(**hparams, callbacks=callbacks)

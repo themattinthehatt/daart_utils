@@ -224,7 +224,7 @@ def run_main(hparams, *args):
                 hparam_str += '_weak=%.1f' % hparams['lambda_weak']
             if hparams.get('lambda_task', 0) > 0:
                 hparam_str += '_task=%.1f' % hparams['lambda_task']
-            if hparams.get('lambda_task', 0) > 0:
+            if hparams.get('lambda_pred', 0) > 0:
                 hparam_str += '_pred=%.1f' % hparams['lambda_pred']
             plot_training_curves(
                 os.path.join(model_save_path, 'metrics.csv'), dtype='train',

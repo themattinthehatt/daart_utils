@@ -70,7 +70,7 @@ def run_main(args):
 
             call_str = [
                 'python',
-                grid_search_file,
+                args.grid_search_file,
                 '--data_config', config_files['data'],
                 '--model_config', config_files['model'],
                 '--train_config', config_files['train']
@@ -116,6 +116,8 @@ if __name__ == '__main__':
     parser.add_argument('--fit_gru', action='store_true', default=False)
     parser.add_argument('--fit_dtcn', action='store_true', default=False)
     parser.add_argument('--fit_rf', action='store_true', default=False)
+
+    parser.add_argument('--grid_search_file', type=str, default=grid_search_file)
 
     namespace, _ = parser.parse_known_args()
     run_main(namespace)

@@ -48,9 +48,13 @@ def plot_heatmaps(
         for sess_id in sess_ids:
 
             fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols + 1, 4 * n_rows + 1))
-            axes = axes.flatten()
+            if isinstance(axes, np.ndarray):
+                axes = axes.flatten()
+            else:
+                axes = [axes]
             for ax in axes:
                 ax.set_axis_off()
+
             for l, label_name in enumerate(label_names):
                 axes[l].set_axis_on()
                 data_tmp = df[(df.label == label_name) & (df.expt_id == sess_id)].pivot(
@@ -66,7 +70,10 @@ def plot_heatmaps(
 
         # plot heatmap for each label, averaged over expt ids
         fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols + 1, 4 * n_rows + 1))
-        axes = axes.flatten()
+        if isinstance(axes, np.ndarray):
+            axes = axes.flatten()
+        else:
+            axes = [axes]
         for ax in axes:
             ax.set_axis_off()
 
@@ -87,6 +94,7 @@ def plot_heatmaps(
             else:
                 raise NotImplementedError
 
+            axes[l].set_axis_on()
             if cmaps is not None:
                 sns.heatmap(
                     data_tmp, vmin=vmin, vmax=vmax, ax=axes[l], annot=annot, cmap=cmaps[l],

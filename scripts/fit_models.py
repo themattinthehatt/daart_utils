@@ -204,6 +204,8 @@ def run_main(hparams, *args):
                     epoch_end=hparams['anneal_end']))
                 callbacks.append(PseudoLabels(
                     prob_threshold=hparams['prob_threshold'], epoch_start=hparams['anneal_start']))
+                # set min_epochs to when annealings ends
+                hparams['min_epochs'] = hparams['anneal_end']
 
         # -------------------------------------
         # train model + cleanup

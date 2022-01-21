@@ -1,28 +1,25 @@
 """Fit daart models (potentially searching hyperparameters on a set of data)."""
 
+import logging
 import numpy as np
 import os
+import sys
 import time
 import torch
 
-from daart.data import DataGenerator
+from daart.data import DataGenerator, compute_sequence_pad
 from daart.eval import plot_training_curves
 from daart.io import export_hparams
 from daart.models import Segmenter
+from daart.testtube import get_all_params, print_hparams, create_tt_experiment, clean_tt_dir
 from daart.train import Trainer
 from daart.transforms import ZScore
-from daart.utils import compute_batch_pad
-
-from daart_utils.testtube import get_all_params, print_hparams, create_tt_experiment, clean_tt_dir
 
 
 def run_main(hparams, *args):
 
     if not isinstance(hparams, dict):
         hparams = vars(hparams)
-
-    # print hparams to console
-    print_hparams(hparams)
 
     # start at random times (so test tube creates separate folders)
     t = time.time()
@@ -41,6 +38,28 @@ def run_main(hparams, *args):
         hparams['expt_ids_to_keep'] = hparams['expt_ids']
     else:
         hparams['expt_ids_to_keep'] = hparams['expt_ids_to_keep'].split(';')
+
+    # set up error logging (different from train logging)
+    logging.basicConfig(
+        filename=os.path.join(hparams['tt_version_dir'], 'console.log'),
+        filemode='w', level=logging.DEBUG,
+        format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %H:%M:%S',
+    )
+    logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))  # add logging to console
+    logging.getLogger('matplotlib.font_manager').disabled = True
+
+    # run train model script
+    try:
+        train_model(hparams)
+    except:
+        logging.exception('error_traceback')
+
+
+def train_model(hparams):
+
+    # print hparams to console
+    print_str = print_hparams(hparams)
+    logging.info(print_str)
 
     # where model results will be saved
     model_save_path = hparams['tt_version_dir']
@@ -66,10 +85,20 @@ def run_main(hparams, *args):
         if not os.path.exists(markers_file):
             markers_file = os.path.join(hparams['data_dir'], input_type, expt_id + '_labeled.npy')
         if not os.path.exists(markers_file):
-            raise FileNotFoundError('could not find marker file for %s' % expt_id)
+            msg = 'could not find marker file for %s' % expt_id
+            logging.info(msg)
+            raise FileNotFoundError(msg)
         signals_curr.append('markers')
         transforms_curr.append(ZScore())
         paths_curr.append(markers_file)
+
+        # heuristic labels
+        if hparams.get('lambda_weak', 0) > 0:
+            heur_labels_file = os.path.join(
+                hparams['data_dir'], 'labels-heuristic', expt_id + '_labels.csv')
+            signals_curr.append('labels_weak')
+            transforms_curr.append(None)
+            paths_curr.append(heur_labels_file)
 
         # hand labels
         if hparams.get('lambda_strong', 0) > 0:
@@ -83,14 +112,6 @@ def run_main(hparams, *args):
             signals_curr.append('labels_strong')
             transforms_curr.append(None)
             paths_curr.append(hand_labels_file)
-
-        # heuristic labels
-        if hparams.get('lambda_weak', 0) > 0:
-            heur_labels_file = os.path.join(
-                hparams['data_dir'], 'labels-heuristic', expt_id + '_labels.csv')
-            signals_curr.append('labels_weak')
-            transforms_curr.append(None)
-            paths_curr.append(heur_labels_file)
 
         # tasks
         if hparams.get('lambda_task', 0) > 0:
@@ -106,18 +127,19 @@ def run_main(hparams, *args):
 
     # compute padding needed to account for convolutions
     if hparams['model_type'] == 'random-forest':
-        hparams['batch_pad'] = 0
+        hparams['sequence_pad'] = 0
     else:
-        hparams['batch_pad'] = compute_batch_pad(hparams)
+        hparams['sequence_pad'] = compute_sequence_pad(hparams)
 
     # build data generator
-    print('Loading data...')
+    logging.info('Loading data...')
     data_gen = DataGenerator(
         hparams['expt_ids'], signals, transforms, paths, device=hparams['device'],
+        sequence_length=hparams['sequence_length'], sequence_pad=hparams['sequence_pad'],
         batch_size=hparams['batch_size'], trial_splits=hparams['trial_splits'],
-        train_frac=hparams['train_frac'], batch_pad=hparams['batch_pad'],
+        train_frac=hparams['train_frac'],
         input_type=hparams.get('input_type', 'markers'))
-    print(data_gen)
+    logging.info(data_gen)
 
     # automatically compute input/output sizes from data
     hparams['input_size'] = data_gen.datasets[0].data['markers'][0].shape[1]
@@ -158,7 +180,7 @@ def run_main(hparams, *args):
         model = RandomForestClassifier(
             n_estimators=6000, max_features='sqrt', criterion='entropy', min_samples_leaf=1,
             bootstrap=True, n_jobs=-1, random_state=hparams['rng_seed_model'])
-        print(model)
+        logging.info(model)
 
         # -------------------------------------
         # train model
@@ -167,7 +189,7 @@ def run_main(hparams, *args):
         # just select non-background points
         model.fit(data_mat_train[label_mat_train > 0, :], label_mat_train[label_mat_train > 0])
         t_end = time.time()
-        print('Fit time: %.1f sec' % (t_end - t_beg))
+        logging.info('Fit time: %.1f sec' % (t_end - t_beg))
 
         # save model
         with open(os.path.join(model_save_path, 'best_val_model.pt'), 'wb') as f:
@@ -182,7 +204,7 @@ def run_main(hparams, *args):
         torch.manual_seed(hparams.get('rng_seed_model', 0))
         model = Segmenter(hparams)
         model.to(hparams['device'])
-        print(model)
+        logging.info(model)
 
         # -------------------------------------
         # set up training callbacks
@@ -214,11 +236,11 @@ def run_main(hparams, *args):
         trainer = Trainer(**hparams, callbacks=callbacks)
         trainer.fit(model, data_gen, save_path=model_save_path)
         t_end = time.time()
-        print('Fit time: %.1f sec' % (t_end - t_beg))
+        logging.info('Fit time: %.1f sec' % (t_end - t_beg))
 
         # save training curves
         if hparams.get('plot_train_curves', False):
-            print('\nExporting train/val plots...')
+            logging.info('Exporting train/val plots...')
             hparam_str = ''
             if hparams.get('lambda_strong', 0) > 0:
                 hparam_str += 'strong=%.1f' % hparams['lambda_strong']

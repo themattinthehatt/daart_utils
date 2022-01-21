@@ -13,6 +13,9 @@ from daart.io import get_subdirs
 
 
 def get_all_params():
+
+    print('WARNING! This function will soon be deprecated, import from daart.testtube')
+
     # raise error if user has other command line arguments specified
     if len(sys.argv[1:]) != 6:
         raise ValueError('No command line arguments allowed other than config file names')
@@ -48,13 +51,16 @@ def get_all_params():
 
 def print_hparams(hparams):
     """Pretty print hparams to console."""
+    print('WARNING! This function will soon be deprecated, import from daart.testtube')
     config_files = ['data', 'model', 'train']
+    print_str = ''
     for config_file in config_files:
-        print('\n%s CONFIG:' % config_file.upper())
+        print_str += '\n%s CONFIG:\n' % config_file.upper()
         config_dict = yaml.safe_load(open(hparams['%s_config' % config_file]))
         for key in config_dict.keys():
-            print('    {}: {}'.format(key, hparams[key]))
-    print('')
+            print_str += '    {}: {}\n'.format(key, hparams[key])
+    print_str += '\n'
+    return print_str
 
 
 def create_tt_experiment(hparams):
@@ -73,7 +79,7 @@ def create_tt_experiment(hparams):
 
     """
     from test_tube import Experiment
-
+    print('WARNING! This function will soon be deprecated, import from daart.testtube')
     # get model path
     if not os.path.isdir(hparams['results_dir']):
         os.makedirs(hparams['results_dir'])
@@ -102,6 +108,7 @@ def create_tt_experiment(hparams):
 
 def clean_tt_dir(hparams):
     """Delete all (unnecessary) subdirectories in the model directory (created by test-tube)"""
+    print('WARNING! This function will soon be deprecated, import from daart.testtube')
     import shutil
     # get subdirs
     version_dir = hparams['tt_version_dir']

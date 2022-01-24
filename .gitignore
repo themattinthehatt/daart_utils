@@ -137,3 +137,4 @@ sandbox/
 *~
 
 daart_utils/paths.py
+daart_utils/session_ids/fish.py

@@ -140,6 +140,10 @@ def train_model(hparams):
                     prob_threshold=hparams['prob_threshold'], epoch_start=hparams['anneal_start']))
                 # set min_epochs to when annealings ends
                 hparams['min_epochs'] = hparams['anneal_end']
+        if hparams.get('variational', False):
+            from daart.callbacks import AnnealHparam
+            callbacks.append(AnnealHparam(
+                hparams=model.hparams, key='kl_weight', epoch_start=0, epoch_end=100))
 
         # -------------------------------------
         # train model + cleanup

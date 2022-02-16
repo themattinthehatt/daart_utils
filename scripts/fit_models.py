@@ -13,7 +13,7 @@ from daart.io import export_hparams
 from daart.models import Segmenter
 from daart.testtube import get_all_params, print_hparams, create_tt_experiment, clean_tt_dir
 from daart.train import Trainer
-from daart.transforms import ZScore
+from daart.utils import build_data_generator
 
 
 def run_main(hparams, *args):
@@ -32,12 +32,6 @@ def run_main(hparams, *args):
     if hparams is None:
         print('Experiment exists! Aborting fit')
         return
-
-    # take care of subsampled expt_ids
-    if 'expt_ids_to_keep' not in hparams.keys():
-        hparams['expt_ids_to_keep'] = hparams['expt_ids']
-    else:
-        hparams['expt_ids_to_keep'] = hparams['expt_ids_to_keep'].split(';')
 
     # set up error logging (different from train logging)
     logging.basicConfig(
@@ -61,102 +55,20 @@ def train_model(hparams):
     print_str = print_hparams(hparams)
     logging.info(print_str)
 
+    # take care of subsampled expt_ids
+    if 'expt_ids_to_keep' not in hparams.keys():
+        hparams['expt_ids_to_keep'] = hparams['expt_ids']
+    else:
+        hparams['expt_ids_to_keep'] = hparams['expt_ids_to_keep'].split(';')
+
     # where model results will be saved
     model_save_path = hparams['tt_version_dir']
 
-    # -------------------------------------
     # build data generator
-    # -------------------------------------
-    signals = []
-    transforms = []
-    paths = []
-
-    for expt_id in hparams['expt_ids']:
-
-        signals_curr = []
-        transforms_curr = []
-        paths_curr = []
-
-        # DLC markers or features (i.e. from simba)
-        input_type = hparams.get('input_type', 'markers')
-        markers_file = os.path.join(hparams['data_dir'], input_type, expt_id + '_labeled.h5')
-        if not os.path.exists(markers_file):
-            markers_file = os.path.join(hparams['data_dir'], input_type, expt_id + '_labeled.csv')
-        if not os.path.exists(markers_file):
-            markers_file = os.path.join(hparams['data_dir'], input_type, expt_id + '_labeled.npy')
-        if not os.path.exists(markers_file):
-            msg = 'could not find marker file for %s' % expt_id
-            logging.info(msg)
-            raise FileNotFoundError(msg)
-        signals_curr.append('markers')
-        transforms_curr.append(ZScore())
-        paths_curr.append(markers_file)
-
-        # heuristic labels
-        if hparams.get('lambda_weak', 0) > 0:
-            heur_labels_file = os.path.join(
-                hparams['data_dir'], 'labels-heuristic', expt_id + '_labels.csv')
-            signals_curr.append('labels_weak')
-            transforms_curr.append(None)
-            paths_curr.append(heur_labels_file)
-
-        # hand labels
-        if hparams.get('lambda_strong', 0) > 0:
-            if expt_id not in hparams['expt_ids_to_keep']:
-                hand_labels_file = None
-            else:
-                hand_labels_file = os.path.join(
-                    hparams['data_dir'], 'labels-hand', expt_id + '_labels.csv')
-                if not os.path.exists(hand_labels_file):
-                    hand_labels_file = None
-            signals_curr.append('labels_strong')
-            transforms_curr.append(None)
-            paths_curr.append(hand_labels_file)
-
-        # tasks
-        if hparams.get('lambda_task', 0) > 0:
-            tasks_labels_file = os.path.join(hparams['data_dir'], 'tasks', expt_id + '.csv')
-            signals_curr.append('tasks')
-            transforms_curr.append(ZScore())
-            paths_curr.append(tasks_labels_file)
-
-        # define data generator signals
-        signals.append(signals_curr)
-        transforms.append(transforms_curr)
-        paths.append(paths_curr)
-
-    # compute padding needed to account for convolutions
-    if hparams['model_type'] == 'random-forest':
-        hparams['sequence_pad'] = 0
-    else:
-        hparams['sequence_pad'] = compute_sequence_pad(hparams)
-
-    # build data generator
-    logging.info('Loading data...')
-    data_gen = DataGenerator(
-        hparams['expt_ids'], signals, transforms, paths, device=hparams['device'],
-        sequence_length=hparams['sequence_length'], sequence_pad=hparams['sequence_pad'],
-        batch_size=hparams['batch_size'], trial_splits=hparams['trial_splits'],
-        train_frac=hparams['train_frac'],
-        input_type=hparams.get('input_type', 'markers'))
+    data_gen = build_data_generator(hparams)
     logging.info(data_gen)
 
-    # automatically compute input/output sizes from data
-    hparams['input_size'] = data_gen.datasets[0].data['markers'][0].shape[1]
-    # try:
-    #     hparams['output_size'] = data_gen.datasets[0].data['labels_strong'][0].shape[1]
-    # except KeyError:
-    #     hparams['output_size'] = data_gen.datasets[0].data['labels_weak'][0].shape[1]
-    if hparams.get('lambda_task', 0) > 0:
-        task_size = 0
-        for batch in data_gen.datasets[0].data['tasks']:
-            if batch.shape[1] == 0:
-                continue
-            else:
-                task_size = batch.shape[1]
-                break
-        hparams['task_size'] = task_size
-
+    # fit models
     if hparams['model_type'] == 'random-forest':
 
         import pickle
@@ -228,6 +140,10 @@ def train_model(hparams):
                     prob_threshold=hparams['prob_threshold'], epoch_start=hparams['anneal_start']))
                 # set min_epochs to when annealings ends
                 hparams['min_epochs'] = hparams['anneal_end']
+        if hparams.get('variational', False):
+            from daart.callbacks import AnnealHparam
+            callbacks.append(AnnealHparam(
+                hparams=model.hparams, key='kl_weight', epoch_start=0, epoch_end=100))
 
         # -------------------------------------
         # train model + cleanup

@@ -6,7 +6,7 @@ import os
 import pandas as pd
 import pickle
 
-from daart.data import load_marker_csv_, load_feature_csv, load_marker_h5
+from daart.data import load_marker_csv, load_feature_csv, load_marker_h5
 from daart.data import load_label_csv, load_label_pkl
 
 
@@ -335,7 +335,8 @@ class DataHandler(object):
             framerate=framerate, height=height)
 
     def make_syllable_video(
-            self, save_file, label_type, include_markers=False, smooth_markers=False, markersize=8,
+            self, save_file, label_type, include_markers=False, likelihood_threshold=None,
+            markersize=8, smooth_markers=False, smooth_window=31, smooth_order=3,
             save_states_separately=False, min_threshold=5, n_buffer=5, n_pre_frames=3,
             max_frames=1000, framerate=20):
         """
@@ -349,8 +350,14 @@ class DataHandler(object):
             'hand' | 'heuristic' | 'model'
         include_markers : bool or list
             True to overlay markers on video, or a list of marker names to include
+        likelihood_threshold : float or NoneType
+            if float, only consider likelihoods above this threshold in determining behavior bouts
         smooth_markers : bool
             True to first smooth markers with a savitzky-golay filter
+        smooth_window : int
+            window size of savitzky-golay filter in bins; must be odd
+        smooth_order : int
+            polynomial order of savitzky-golay filter
         markersize : float, optional
             size of markers if plotted
         save_states_separately : bool
@@ -371,21 +378,26 @@ class DataHandler(object):
         from daart_utils.utils import smooth_interpolate_signal_sg
         from daart_utils.videos import make_syllable_video
 
+        probs = None  # probability of each state
         if label_type == 'hand':
-            labels = self.hand_labels.vals
+            labels = np.copy(self.hand_labels.vals)
             names = self.hand_labels.names
         elif label_type == 'heuristic':
-            labels = self.heuristic_labels.vals
+            labels = np.copy(self.heuristic_labels.vals)
             names = self.heuristic_labels.names
         elif label_type == 'model':
-            print('warning! probably want to threshold probabilities; need to implement')
-            labels = self.model_labels.vals
+            probs = np.copy(self.model_labels.vals)
+            labels = np.copy(self.model_labels.vals)
             names = self.model_labels.names
         else:
             raise NotImplementedError('must choose from "hand", "heuristic", "model"')
 
         # assume a single behavior per frame (can generalize later)
-        labels = np.argmax(labels, axis=1)
+        if likelihood_threshold is not None:
+            labels_ = np.copy(labels)
+            labels_[np.max(labels_, axis=1) < likelihood_threshold] = 0
+
+        labels_ = np.argmax(labels_, axis=1)
         label_mapping = {l: name for l, name in enumerate(names)}
 
         if include_markers:
@@ -396,29 +408,29 @@ class DataHandler(object):
             else:
                 markers = {m: np.copy(self.markers.vals[m]) for m in self.markers.names}
             for name, val in markers.items():
-                markers[name][self.markers.likelihoods[name] < 0.4, :] = np.nan
+                markers[name][self.markers.likelihoods[name] < 0.05, :] = np.nan
                 if smooth_markers:
                     for i in [0, 1]:
                         markers[name][:, i] = smooth_interpolate_signal_sg(
-                            markers[name][:, i], window=31, order=3,
+                            markers[name][:, i], window=smooth_window, order=smooth_order,
                             interp_kind='linear')
         else:
             markers = None
 
         if save_states_separately:
-            for n in range(np.max(labels)):
+            for n in range(np.max(labels_)):
                 save_file_ = save_file.replace('.mp4', '_%s.mp4' % names[n])
                 make_syllable_video(
-                    save_file=save_file_, labels=labels, video_obj=self.video, markers=markers,
+                    save_file=save_file_, labels=labels_, video_obj=self.video, markers=markers,
                     markersize=markersize, min_threshold=min_threshold, n_buffer=n_buffer,
                     n_pre_frames=n_pre_frames, max_frames=max_frames, single_label=n,
-                    label_mapping=label_mapping, framerate=framerate)
+                    probs=probs, label_mapping=label_mapping, framerate=framerate)
         else:
             make_syllable_video(
-                save_file=save_file, labels=labels, video_obj=self.video, markers=markers,
+                save_file=save_file, labels=labels_, video_obj=self.video, markers=markers,
                 markersize=markersize, min_threshold=min_threshold, n_buffer=n_buffer,
                 n_pre_frames=n_pre_frames, max_frames=max_frames, single_label=None,
-                label_mapping=label_mapping, framerate=framerate)
+                probs=probs, label_mapping=label_mapping, framerate=framerate)
 
 
 class Video(object):
@@ -488,23 +500,8 @@ class Video(object):
             returned frames of shape shape (n_frames, n_channels, ypix, xpix)
 
         """
-        is_contiguous = np.sum(np.diff(idxs)) == (len(idxs) - 1)
-        n_frames = len(idxs)
-        for fr, i in enumerate(idxs):
-            if fr == 0 or not is_contiguous:
-                self.cap.set(1, i)
-            ret, frame = self.cap.read()
-            if ret:
-                if fr == 0:
-                    height, width, _ = frame.shape
-                    frames = np.zeros((n_frames, 1, height, width), dtype='uint8')
-                frames[fr, 0, :, :] = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            else:
-                print(
-                    'warning! reached end of video; returning blank frames for remainder of ' +
-                    'requested indices')
-                break
-        return frames
+        from daart_utils.videos import get_frames_from_idxs
+        return get_frames_from_idxs(self.cap, idxs)
 
 
 class Markers(object):
@@ -681,7 +678,7 @@ class Labels(object):
         else:
             raise ValueError('"%s" is an invalid file extension' % file_ext)
 
-        if logits:
+        if not logits:
             # we need to convert from logits one-hot vector
             from daart.transforms import MakeOneHot
             most_likely = np.argmax(labels, axis=1)

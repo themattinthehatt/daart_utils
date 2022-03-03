@@ -5,6 +5,7 @@ a video with ffmpeg.
 
 """
 
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -12,6 +13,40 @@ import shutil
 from tqdm import tqdm
 
 from daart_utils.utils import get_label_runs
+
+
+def get_frames_from_idxs(cap, idxs):
+    """Helper function to load video segments.
+
+    Parameters
+    ----------
+    cap : cv2.VideoCapture object
+    idxs : array-like
+        frame indices into video
+
+    Returns
+    -------
+    np.ndarray
+        returned frames of shape shape (n_frames, n_channels, ypix, xpix)
+
+    """
+    is_contiguous = np.sum(np.diff(idxs)) == (len(idxs) - 1)
+    n_frames = len(idxs)
+    for fr, i in enumerate(idxs):
+        if fr == 0 or not is_contiguous:
+            cap.set(1, i)
+        ret, frame = cap.read()
+        if ret:
+            if fr == 0:
+                height, width, _ = frame.shape
+                frames = np.zeros((n_frames, 1, height, width), dtype='uint8')
+            frames[fr, 0, :, :] = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        else:
+            print(
+                'warning! reached end of video; returning blank frames for remainder of ' +
+                'requested indices')
+            break
+    return frames
 
 
 def make_labeled_video(save_file, frames, markers=None, labels=None, framerate=20, height=4):

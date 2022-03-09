@@ -69,10 +69,9 @@ def train_model(hparams):
     logging.info(data_gen)
 
     # fit models
-    if hparams['model_class'] == 'random-forest':
+    if hparams['model_class'] == 'random-forest' or hparams['model_class'] == 'xgboost':
 
         import pickle
-        from sklearn.ensemble import RandomForestClassifier
         from daart_utils.testtube import get_data_by_dtype
 
         # -------------------------------------
@@ -94,9 +93,17 @@ def train_model(hparams):
         # -------------------------------------
         hparams['rng_seed_model'] = hparams['rng_seed_train']
         np.random.seed(hparams['rng_seed_model'])
-        model = RandomForestClassifier(
-            n_estimators=6000, max_features='sqrt', criterion='entropy', min_samples_leaf=1,
-            bootstrap=True, n_jobs=-1, random_state=hparams['rng_seed_model'])
+        if hparams['model_class'] == 'random-forest':
+            from sklearn.ensemble import RandomForestClassifier
+            model = RandomForestClassifier(
+                n_estimators=6000, max_features='sqrt', criterion='entropy', min_samples_leaf=1,
+                bootstrap=True, n_jobs=-1, random_state=hparams['rng_seed_model'])
+        elif hparams['model_class'] == 'xgboost':
+            from xgboost import XGBClassifier
+            model = XGBClassifier(
+                n_estimators=2000, max_depth=3, learning_rate=0.1, objective='multi:softprob',
+                eval_metric='mlogloss', tree_method='hist', gamma=1, min_child_weight=1,
+                subsample=0.8, colsample_bytree=0.8, random_state=hparams['rng_seed_model'])
         logging.info(model)
 
         # -------------------------------------
@@ -109,8 +116,12 @@ def train_model(hparams):
         logging.info('Fit time: %.1f sec' % (t_end - t_beg))
 
         # save model
-        with open(os.path.join(model_save_path, 'best_val_model.pt'), 'wb') as f:
-            pickle.dump(model, f)
+        save_file = os.path.join(model_save_path, 'best_val_model.pt')
+        if hparams['model_class'] == 'random-forest':
+            with open(save_file, 'wb') as f:
+                pickle.dump(model, f)
+        else:
+            model.save_model(save_file)
 
     else:
 

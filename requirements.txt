@@ -1,6 +1,7 @@
 cv2
 h5py
 ipykernel
+jupyter
 matplotlib
 numpy
 pandas
@@ -13,3 +14,4 @@ tables
 test-tube
 torch==1.8.0
 tqdm
+xgboost

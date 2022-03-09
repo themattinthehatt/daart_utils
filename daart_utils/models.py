@@ -32,7 +32,6 @@ def compute_model_predictions(
 
     """
     from daart.io import find_experiment
-    from daart.models import Segmenter
 
     version_int = find_experiment(hparams, verbose=verbose)
     if len(version_int) == 0:
@@ -44,6 +43,7 @@ def compute_model_predictions(
     if os.path.exists(states_file) and not overwrite_states:
         predictions = np.load(states_file)
     else:
+
         # load model
         model_file = os.path.join(version_dir, 'best_val_model.pt')
         try:
@@ -51,6 +51,9 @@ def compute_model_predictions(
             # print('Loading model defined in %s' % arch_file)
             with open(arch_file, 'rb') as f:
                 hparams_new = pickle.load(f)
+            print(
+                f'WARNING! Loading pickled hparam files will be deprecated in a future release!'
+                f'Please contact m.whiteway@columbia.edu for info on updating your model files!')
         except FileNotFoundError:
             arch_file = os.path.join(version_dir, 'hparams.yaml')
             with open(arch_file, 'r') as f:
@@ -59,17 +62,30 @@ def compute_model_predictions(
         hparams_new['device'] = hparams.get('device', 'cpu')
 
         if hparams_new['model_class'] == 'random-forest':
-            with open(os.path.join(model_file), 'rb') as f:
+            with open(model_file, 'rb') as f:
                 model = pickle.load(f)
-            predictions_ = predict_labels_with_rf(model, data_gen, hparams)
+            predictions_ = predict_labels_with_trees(model, data_gen, hparams)
             predictions = predictions_[0]  # assume a single session
+
+        elif hparams_new['model_class'] == 'xgboost':
+            from xgboost import XGBClassifier
+            model = XGBClassifier(
+                n_estimators=2000, max_depth=3, learning_rate=0.1, objective='multi:softprob',
+                eval_metric='mlogloss', tree_method='hist', gamma=1, min_child_weight=1,
+                subsample=0.8, colsample_bytree=0.8, random_state=hparams_new['rng_seed_model'])
+            model.load_model(model_file)
+            predictions_ = predict_labels_with_trees(model, data_gen, hparams)
+            predictions = predictions_[0]  # assume a single session
+
         elif hparams_new['model_class'] == 'segmenter':
+            from daart.models import Segmenter
             model = Segmenter(hparams_new)
             model.load_parameters_from_file(model_file)
             model.to(hparams_new['device'])
             model.eval()
             predictions = model.predict_labels(data_gen)['labels']
             predictions = np.argmax(np.vstack(predictions[0]), axis=1)
+
         else:
             raise NotImplementedError
 
@@ -103,7 +119,8 @@ def get_default_hparams(**kwargs):
         'rng_seed_model': 0,        # rng seed for model initialization
         'trial_splits': '9;1;0;0',  # 'train;val;test;gap'
         'train_frac': 1,            # fraction of initial training data to use
-        'batch_size': 2000,         # batch size
+        'sequence_length': 2000,    # length of sequences
+        'batch_size': 8,            # number of sequences in a batch
         'model_type': 'dtcn',       # 'temporal-mlp' | 'dtcn' | 'gru' | 'lstm'
         'learning_rate': 1e-4,      # adam learning rate
         'n_hid_layers': 2,          # hidden layers for each of the encoder/decoder networks
@@ -118,7 +135,7 @@ def get_default_hparams(**kwargs):
         'device': 'cpu',            # computational device on which to place model/data
         'dropout': 0.1,             # dropout for 'dtcn'
         'activation': 'lrelu',      # hidden unit activation function
-        'batch_pad': 0,             # batch pad for convolutions; needs to be updated for non-rnns
+        'sequence_pad': 0,          # seq pad for convolutions; needs to be updated for non-rnns
         'tt_expt_dir': 'test',      # test-tube experiment directory name
         'prob_threshold': 0.95,     # fixed probability threshold for pseudo-labels algorithm
         'anneal_start': 50,         # epoch where semi-supervised loss weights begin annealing
@@ -130,12 +147,12 @@ def get_default_hparams(**kwargs):
     return hparams
 
 
-def predict_labels_with_rf(model, data_generator, hparams):
+def predict_labels_with_trees(model, data_generator, hparams):
     """
 
     Parameters
     ----------
-    model : sklearn.embedding.RandomForestClassifier object
+    model : sklearn.embedding.RandomForestClassifier object or xgboost.XGBClassifier object
         trained model
     data_generator : DataGenerator object
         data generator to serve data batches

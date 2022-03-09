@@ -35,10 +35,9 @@ def compute_model_predictions(
     from daart.models import Segmenter
 
     version_int = find_experiment(hparams, verbose=verbose)
-    if version_int is None:
+    if len(version_int) == 0:
         raise FileNotFoundError
-    version_str = str('version_%i' % version_int)
-    version_dir = os.path.join(hparams['tt_expt_dir'], version_str)
+    version_dir = version_int[0]
 
     # check to see if states exist
     states_file = os.path.join(version_dir, '%s_states.npy' % data_gen.datasets[0].id)
@@ -59,18 +58,20 @@ def compute_model_predictions(
 
         hparams_new['device'] = hparams.get('device', 'cpu')
 
-        if hparams_new['model_type'] == 'random-forest':
+        if hparams_new['model_class'] == 'random-forest':
             with open(os.path.join(model_file), 'rb') as f:
                 model = pickle.load(f)
-            predictions_ = predict_labels_with_rf(model, data_gen)
+            predictions_ = predict_labels_with_rf(model, data_gen, hparams)
             predictions = predictions_[0]  # assume a single session
-        else:
+        elif hparams_new['model_class'] == 'segmenter':
             model = Segmenter(hparams_new)
             model.load_parameters_from_file(model_file)
             model.to(hparams_new['device'])
             model.eval()
             predictions = model.predict_labels(data_gen)['labels']
             predictions = np.argmax(np.vstack(predictions[0]), axis=1)
+        else:
+            raise NotImplementedError
 
         # save predictions
         if save_states:
@@ -129,7 +130,7 @@ def get_default_hparams(**kwargs):
     return hparams
 
 
-def predict_labels_with_rf(model, data_generator):
+def predict_labels_with_rf(model, data_generator, hparams):
     """
 
     Parameters
@@ -138,19 +139,19 @@ def predict_labels_with_rf(model, data_generator):
         trained model
     data_generator : DataGenerator object
         data generator to serve data batches
+    hparams : dict
 
     Returns
     -------
-    list of lists
-        first list is over datasets; second list is over batches in the dataset; each element is a
-        numpy array of the predicted class
+    list of np.ndarray
+        list is over datasets; each element is a numpy array of the predicted class
 
     """
 
     # initialize container for inputs
     inputs = [[] for _ in range(data_generator.n_datasets)]
     for sess, dataset in enumerate(data_generator.datasets):
-        inputs[sess] = [np.array([]) for _ in range(dataset.n_trials)]
+        inputs[sess] = [np.array([]) for _ in range(dataset.n_sequences)]
 
     # partially fill container (gap trials will be included as nans)
     dtypes = ['train', 'val', 'test']
@@ -158,8 +159,14 @@ def predict_labels_with_rf(model, data_generator):
         data_generator.reset_iterators(dtype)
         for i in range(data_generator.n_tot_batches[dtype]):
             data, sess = data_generator.next_batch(dtype)
-            inputs[sess][data['batch_idx'].item()] = data['markers'][0].cpu().numpy()
+            inputs[sess[0]][data['batch_idx'].item()] = data['markers'][0].cpu().numpy()
 
-    labels = [model.predict(np.vstack(ins)) for ins in inputs]
+    labels = [[] for _ in range(data_generator.n_datasets)]
+    for i, ins in enumerate(inputs):
+        input = np.vstack(ins)
+        if hparams['input_type'] != 'features-simba':
+            n_lags = hparams['n_lags']
+            input = np.hstack([np.roll(input, i, axis=0) for i in range(-n_lags, n_lags + 1)])
+        labels[i] = model.predict(input)
 
     return labels

@@ -69,7 +69,7 @@ def train_model(hparams):
     logging.info(data_gen)
 
     # fit models
-    if hparams['model_type'] == 'random-forest':
+    if hparams['model_class'] == 'random-forest':
 
         import pickle
         from sklearn.ensemble import RandomForestClassifier
@@ -80,6 +80,11 @@ def train_model(hparams):
         # -------------------------------------
         data_dict, _ = get_data_by_dtype(data_gen, data_key='markers', as_numpy=True)
         data_mat_train = np.vstack(data_dict['train'])
+        # create time embedding of input data
+        if hparams['input_type'] != 'features-simba':
+            n_lags = hparams['n_lags']
+            data_mat_train = np.hstack([
+                np.roll(data_mat_train, i, axis=0) for i in range(-n_lags, n_lags + 1)])
 
         label_dict, _ = get_data_by_dtype(data_gen, data_key='labels_strong', as_numpy=True)
         label_mat_train = np.concatenate(label_dict['train'])

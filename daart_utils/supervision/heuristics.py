@@ -489,3 +489,96 @@ def resident_intruder(
         labels_smooth = labels
 
     return labels_smooth, label_mapping
+
+
+def calms21(
+        features, feature_names, movement_dev_thresh=-400, nose2tailbase_thresh=20,
+        centroid_thresh_mount=50, centroid_thresh_other=400, smooth=True, bout_thresh=5):
+    """Compute heuristics for resident-intruder behaviors from CalMS21 dataset.
+
+    NOTE: needs to be run on simba features AND markers
+
+    Parameters
+    ----------
+    features : np.ndarray
+    feature_names : list
+    movement_dev_thresh : float, optional
+    nose2tailbase_thresh : float, optional
+    centroid_thresh_mount : float, optional
+    centroid_thresh_other : float, optional
+    smooth : bool, optional
+        if True, smooth data by dropping bouts with duration less than bout_thresh
+    bout_thresh : int, optional
+        minimum bout length to keep if smooth=True and n_hmms=0
+
+    Returns
+    -------
+    dict
+
+    """
+
+    # ------------------------------------------------------
+    # other
+    # ------------------------------------------------------
+    idx_feature = np.where(feature_names == 'Centroid_distance')[0][0]
+    zs_other = np.zeros((features.shape[0],))
+    zs_other[features[:, idx_feature] > centroid_thresh_other] = 1
+
+    # ------------------------------------------------------
+    # mount
+    # ------------------------------------------------------
+    idx_feature = np.where(feature_names == 'Centroid_distance')[0][0]
+    zs_mount = np.zeros_like(zs_other)
+    zs_mount[features[:, idx_feature] < centroid_thresh_mount] = 1
+
+    # ------------------------------------------------------
+    # attack
+    # ------------------------------------------------------
+    idx_feature = np.where(
+        feature_names == 'Total_movement_all_bodyparts_both_mice_deviation')[0][0]
+    zs_attack = np.zeros_like(zs_other)
+    zs_attack[
+        (features[:, idx_feature] < movement_dev_thresh)
+        & ~zs_mount.astype('bool')
+        ] = 1
+
+    # ------------------------------------------------------
+    # investigation
+    # ------------------------------------------------------
+    idx_feature = np.where(feature_names == 'M1_Nose_to_M2_tail_base')[0][0]
+    zs_inv = np.zeros_like(zs_other)
+    zs_inv[
+        (features[:, idx_feature] < nose2tailbase_thresh)
+        & ~zs_mount.astype('bool')
+        & ~zs_attack.astype('bool')] = 1
+
+    # ------------------------------------------------------
+    # collect states
+    # ------------------------------------------------------
+    labels = np.zeros_like(zs_other, dtype='int')  # default state = 0: undefined
+    labels[zs_attack == 1] = 1
+    labels[zs_inv == 1] = 2
+    labels[zs_mount == 1] = 3
+    labels[zs_other == 1] = 4
+    label_mapping = {
+        0: 'background',
+        1: 'attack',
+        2: 'investigation',
+        3: 'mount',
+        4: 'other',
+    }
+
+    if smooth and bout_thresh > 0:
+        # only take runs longer than `bout_thresh` frames
+        idx_list = get_label_runs([labels])
+        # loop through classes
+        for idxs in idx_list:
+            # loop through instances
+            for idx in idxs:
+                if idx[2] - idx[1] < bout_thresh:
+                    labels[idx[1]:idx[2]] = 0  # set to background
+        labels_smooth = labels
+    else:
+        labels_smooth = labels
+
+    return labels_smooth, label_mapping

@@ -393,8 +393,8 @@ class DataHandler(object):
             raise NotImplementedError('must choose from "hand", "heuristic", "model"')
 
         # assume a single behavior per frame (can generalize later)
+        labels_ = np.copy(labels)
         if likelihood_threshold is not None:
-            labels_ = np.copy(labels)
             labels_[np.max(labels_, axis=1) < likelihood_threshold] = 0
 
         labels_ = np.argmax(labels_, axis=1)

@@ -68,6 +68,29 @@ def train_model(hparams):
     data_gen = build_data_generator(hparams)
     logging.info(data_gen)
 
+    # pull class weights out of labeled training data
+    if hparams.get('weight_classes', False):
+        pad = hparams['sequence_pad']
+        totals = np.zeros((hparams['output_size'],))
+        for dataset in data_gen.datasets:
+            for b, batch in enumerate(dataset.data['labels_strong']):
+                counts = np.bincount(batch[pad:-pad].astype('int'))
+                if len(counts) == len(totals):
+                    totals += counts
+                else:
+                    for i, c in enumerate(counts):
+                        totals[i] += c
+        totals[0] = 0  # get rid of background class
+        # select class weights by choosing class with max labeled examples to have a value of 1;
+        # the remaining weights will be inversely proportional to their prevalence. For example, a
+        # class that has half as many examples as the most prevalent will be weighted twice as much
+        class_weights = np.max(totals) / (totals + 1e-10)
+        class_weights[totals == 0] = 0
+        hparams['class_weights'] = [float(t) for t in class_weights]
+        print('class weights: {}'.format(class_weights))
+    else:
+        hparams['class_weights'] = None
+
     # fit models
     if hparams['model_class'] == 'random-forest' or hparams['model_class'] == 'xgboost':
 

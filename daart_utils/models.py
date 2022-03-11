@@ -115,6 +115,7 @@ def get_default_hparams(**kwargs):
 
     """
     hparams = {
+        'model_class': 'segmenter',
         'rng_seed_train': 0,        # rng seed for batch order
         'rng_seed_model': 0,        # rng seed for model initialization
         'trial_splits': '9;1;0;0',  # 'train;val;test;gap'

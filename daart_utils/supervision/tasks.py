@@ -213,3 +213,60 @@ def resident_intruder(features, feature_names):
     df = pd.DataFrame(np.column_stack(data), columns=column_names)
 
     return df
+
+
+def calms21(markers, features, feature_names):
+    """Compute heuristics for resident-intruder behaviors of CalMS21 dataset.
+
+    Replicates the programs defined in https://arxiv.org/pdf/2011.13917.pdf.
+
+    NOTE: needs to be run on simba features AND markers
+
+    Parameters
+    ----------
+    markers : dict
+    features : np.ndarray
+    feature_names : np.ndarray
+
+    Returns
+    -------
+    pd.DataFrame
+
+    """
+    from daart_utils.utils import absolute_angle
+
+    column_names = [
+        'Movement_mouse_1_centroid',  # movements of CD1 centroid from previous frame
+        'Movement_mouse_2_centroid',  # movements of C57 centroid from previous frame
+        'Nose_to_nose_distance',  # distance between the nose of the CD1 and nose of the C57
+        'M1_Nose_to_M2_tail_base',  # distance between the nose of the CD1 and tail-base of the C57
+        'Mouse_1_angle',  # The body angle in degrees (using the CD1 tail-base, centroid, and nose coordinates)
+        'Mouse_2_angle',  # The body angle in degrees (using the C57 tail-base, centroid, and nose coordinates)
+        'Centroid_distance',  # distance between the centroid of the CD1 and centroid of the C57
+    ]
+
+    data = []
+    for col_name in column_names:
+        idx_feature = np.where(feature_names == col_name)[0][0]
+        data.append(features[:, idx_feature])
+
+    # facing angle
+    column_names += ['Facing_angle']
+    feat_facing_angle = absolute_angle(markers['tailbase_2'], markers['neck_1'], markers['neck_2'])
+    data.append(feat_facing_angle)
+
+    # nose movement relative to centroid for mouse 1
+    column_names += ['Mouse_1_nose_movement_relative_to_centroid']
+    idx_feature = np.where(feature_names == 'Mouse_1_Nose_to_centroid')[0][0]
+    tmp = features[:, idx_feature]
+    data.append(np.abs(np.concatenate([[0], np.diff(tmp)])))
+
+    # nose movement relative to centroid for mouse 2
+    column_names += ['Mouse_2_nose_movement_relative_to_centroid']
+    idx_feature = np.where(feature_names == 'Mouse_2_Nose_to_centroid')[0][0]
+    tmp = features[:, idx_feature]
+    data.append(np.abs(np.concatenate([[0], np.diff(tmp)])))
+
+    df = pd.DataFrame(np.column_stack(data), columns=column_names)
+
+    return df

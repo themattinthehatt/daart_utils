@@ -173,7 +173,7 @@ def oft(markers, pixels):
     return df
 
 
-def resident_intruder(features, feature_names):
+def resident_intruder_old(features, feature_names):
     """Compute heuristics for resident-intruder behaviors.
 
     NOTE: needs to be run on simba features, not markers

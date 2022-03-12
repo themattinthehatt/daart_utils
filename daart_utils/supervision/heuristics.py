@@ -422,7 +422,7 @@ def oft(
     return labels_smooth, label_mapping
 
 
-def resident_intruder(
+def resident_intruder_old(
         features, feature_names, anogenital_thresh=10, int_sniff_thresh=20, smooth=True,
         bout_thresh=5):
     """Compute heuristics for resident-intruder behaviors.
@@ -474,6 +474,112 @@ def resident_intruder(
         4: 'allogrooming_normal',
         5: 'allogroom_vigorous',
         6: 'intruder_sniff'}
+
+    if smooth and bout_thresh > 0:
+        # only take runs longer than `bout_thresh` frames
+        idx_list = get_label_runs([labels])
+        # loop through classes
+        for idxs in idx_list:
+            # loop through instances
+            for idx in idxs:
+                if idx[2] - idx[1] < bout_thresh:
+                    labels[idx[1]:idx[2]] = 0  # set to background
+        labels_smooth = labels
+    else:
+        labels_smooth = labels
+
+    return labels_smooth, label_mapping
+
+
+def resident_intruder(
+        features, feature_names, centroid_thresh=120, ano_sniff_thresh=10, mount_thresh=5,
+        int_sniff_thresh=10, tot_move_cent_thresh=10, tot_move_dev_thresh=-300,
+        nose_move_thresh=5, smooth=True, bout_thresh=5):
+    """Compute heuristics for resident-intruder behaviors.
+
+    NOTE: needs to be run on simba features, not markers
+
+    Parameters
+    ----------
+    features : np.ndarray
+    feature_names : list
+    []_thresh : float, optional
+    smooth : bool, optional
+        if True, smooth data by dropping bouts with duration less than bout_thresh
+    bout_thresh : int, optional
+        minimum bout length to keep if smooth=True and n_hmms=0
+
+    Returns
+    -------
+    dict
+
+    """
+
+    # ------------------------------------------------------
+    # other
+    # ------------------------------------------------------
+    idx_feature = np.where(feature_names == 'Centroid_distance')[0][0]
+    zs_other = np.zeros((features.shape[0],))
+    zs_other[features[:, idx_feature] > centroid_thresh] = 1
+    zs_other_bin = zs_other.astype('int')
+
+    # ------------------------------------------------------
+    # anogenital_sniffing
+    # ------------------------------------------------------
+    idx_feature = np.where(feature_names == 'M1_Nose_to_M2_tail_base')[0][0]
+    zs_anosniff = np.zeros_like(zs_other)
+    zs_anosniff[(features[:, idx_feature] < ano_sniff_thresh)] = 1
+
+    # ------------------------------------------------------
+    # intruder_sniff
+    # ------------------------------------------------------
+    idx_feature = np.where(feature_names == 'M2_Nose_to_M1_tail_base')[0][0]
+    zs_intsniff = np.zeros_like(zs_other)
+    zs_intsniff[(features[:, idx_feature] < int_sniff_thresh)] = 1
+
+    # ------------------------------------------------------
+    # attack
+    # ------------------------------------------------------
+    idx_feature = np.where(feature_names == 'Total_movement_centroids')[0][0]
+    zs_attack_idx0 = features[:, idx_feature] > tot_move_cent_thresh
+    idx_feature = np.where(feature_names == 'Total_movement_all_bodyparts_both_mice_deviation')[0][
+        0]
+    zs_attack_idx1 = features[:, idx_feature] < tot_move_dev_thresh
+    idx_feature = np.where(feature_names == 'Nose_movement_M1_median_15')[0][0]
+    zs_attack_idx2 = features[:, idx_feature] > nose_move_thresh
+
+    zs_attack = np.zeros_like(zs_other)
+    zs_attack[(zs_attack_idx0 | zs_attack_idx1 | zs_attack_idx2)] = 1
+
+    # ------------------------------------------------------
+    # mounting
+    # ------------------------------------------------------
+    idx_feature = np.where(np.array(handler.features.names) == 'Mouse_2_Nose_to_centroid')[0][0]
+    feat = features[:, idx_feature]
+    feat = np.abs(np.concatenate([[0], np.diff(feat)]))
+    zs_mount = np.zeros_like(zs_other)
+    zs_mount[(feat > mount_thresh)] = 1
+
+    # ------------------------------------------------------
+    # collect states
+    # ------------------------------------------------------
+    labels = np.zeros_like(zs_other, dtype='int')  # default state = 0: background
+    labels[zs_other == 1] = 1
+    labels[zs_anosniff == 1] = 4
+    #     labels[zs_mount == 1] = 5
+    labels[zs_intsniff == 1] = 7
+    labels[zs_attack == 1] = 8
+    label_mapping = {
+        0: 'background',
+        1: 'other',
+        2: 'face_grooming',
+        3: 'body_grooming',
+        4: 'anogenital_sniffing',
+        5: 'mounting',
+        6: 'vigorous_grooming',
+        7: 'intruder_sniffing',
+        8: 'attack',
+    }
 
     if smooth and bout_thresh > 0:
         # only take runs longer than `bout_thresh` frames

@@ -215,6 +215,57 @@ def resident_intruder_old(features, feature_names):
     return df
 
 
+def resident_intruder(features, feature_names):
+    """Compute heuristics for resident-intruder behaviors.
+
+    NOTE: needs to be run on simba features, not markers
+
+    Parameters
+    ----------
+    features : np.ndarray
+    feature_names : np.ndarray
+
+    Returns
+    -------
+    pd.DataFrame
+
+    """
+
+    column_names = [
+        'Centroid_distance',  # distance between the centroid of the CD1 and centroid of the C57
+        'M1_Nose_to_M2_tail_base',  # distance between the nose of the CD1 and tail-base of the C57
+        'M1_Nose_to_M2_lat_left',  # distance between the nose of the CD1 and lateral left side of the C57
+        'M1_Nose_to_M2_lat_right',  # distance between the nose of the CD1 and lateral right side of the C57
+        'M2_Nose_to_M1_tail_base',  # distance between the nose of the C57 and tail-base of the CD1
+        'M2_Nose_to_M1_lat_left',  # distance between the nose of the C57 and lateral left side of the CD1
+        'M2_Nose_to_M1_lat_right',  # distance between the nose of the C57 and lateral right side of the CD1
+        'Total_movement_centroids',  # The sum of movement of the CD1 centroid and C57 centroid from previous frame
+        'Total_movement_all_bodyparts_both_mice_deviation',
+        'Nose_movement_M1_median_15',
+    ]
+
+    data = []
+    for col_name in column_names:
+        idx_feature = np.where(feature_names == col_name)[0][0]
+        data.append(features[:, idx_feature])
+
+    # nose movement relative to centroid for mouse 1
+    column_names += ['Mouse_1_nose_movement_relative_to_centroid']
+    idx_feature = np.where(feature_names == 'Mouse_1_Nose_to_centroid')[0][0]
+    tmp = features[:, idx_feature]
+    data.append(np.abs(np.concatenate([[0], np.diff(tmp)])))
+
+    # nose movement relative to centroid for mouse 2
+    column_names += ['Mouse_2_nose_movement_relative_to_centroid']
+    idx_feature = np.where(feature_names == 'Mouse_2_Nose_to_centroid')[0][0]
+    tmp = features[:, idx_feature]
+    data.append(np.abs(np.concatenate([[0], np.diff(tmp)])))
+
+    df = pd.DataFrame(np.column_stack(data), columns=column_names)
+
+    return df
+
+
 def calms21(markers, features, feature_names):
     """Compute heuristics for resident-intruder behaviors of CalMS21 dataset.
 

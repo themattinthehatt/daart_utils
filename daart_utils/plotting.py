@@ -142,3 +142,356 @@ def plot_heatmaps(
         if save_file is not None:
             plt.savefig(save_file)
         plt.show()
+
+
+def plot_bout_histograms(
+        bouts, state_names=None, framerate=None, n_cols=3, title=None, save_file=None):
+    """Plot histogram of bout durations for each behavior.
+
+    Parameters
+    ----------
+    bouts : dict
+        output of daart.eval.run_lengths
+        keys are behavior numbers, vals are lists of bout durations
+    state_names : list, optional
+    framerate : float, optional
+        framerate of the original video; if None, bout durations are reported in frames, if float
+        then seconds are used
+    n_cols : int
+        number of columns in the plot
+    title : str, optional
+        figure title
+    save_file : str, optional
+        absolute path for saving (including extension)
+
+    """
+
+    if not state_names:
+        state_names = ['class_%i' % i for i in range(len(bouts))]
+
+    if framerate is not None:
+        bouts_ = {k: np.array(v) / framerate for k, v in bouts.items()}
+        norm_type = 'sec'
+    else:
+        bouts_ = bouts.copy()
+        norm_type = 'frames'
+
+    n_rows = int(np.ceil(len(state_names) / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 4 * n_rows))
+    axes = axes.flatten()
+    for a, ax in enumerate(axes):
+        if a < len(bouts):
+            m = np.ceil(np.log10(np.max(bouts_[a])))
+            bins = 10 ** (np.arange(0, m, m / 20))
+            ax.hist(
+                bouts_[a],
+                #             density=True,
+                alpha=0.8,
+                bins=bins,
+            )
+            ax.set_xscale('log')
+            if a % n_cols == 0:
+                # left edge
+                ax.set_ylabel('Count')
+            if np.floor(a / n_cols) + 1 == n_rows:
+                ax.set_xlabel('Bout duration (%s)' % norm_type)
+            ax.set_title('%s (%i bouts)\nmin=%i, max=%i' %
+                         (state_names[a], len(bouts_[a]), np.min(bouts_[a]), np.max(bouts_[a])))
+        else:
+            ax.set_axis_off()
+
+    if n_rows == 1:
+        plt.subplots_adjust(top=0.75)
+    elif n_rows == 2:
+        plt.subplots_adjust(top=0.9)
+    if title is None:
+        title = 'Bout histograms'
+    plt.suptitle(title)
+    plt.tight_layout()
+
+    if save_file:
+        plt.savefig(save_file)
+
+    plt.show()
+
+
+def plot_behavior_distribution(
+        bouts, state_names=None, framerate=None, title=None, save_file=None):
+    """Plot a single bar plot of total behavior durations.
+
+    Parameters
+    ----------
+    bouts : dict
+        output of daart.eval.run_lengths
+        keys are behavior numbers, vals are lists of bout durations
+    state_names : list, optional
+    framerate : float, optional
+        framerate of the original video; if None, bout durations are reported in frames, if float
+        then seconds are used
+    title : str, optional
+        figure title
+    save_file : str, optional
+        absolute path for saving (including extension)
+
+    """
+
+    if not state_names:
+        state_names = ['class_%i' % i for i in range(len(bouts))]
+
+    if framerate is not None:
+        bouts_ = {k: np.array(v) / framerate for k, v in bouts.items()}
+        norm_type = 'sec'
+    else:
+        bouts_ = bouts.copy()
+        norm_type = 'frames'
+
+    dist_x = []
+    dist_y = []
+    for b, bouts_list in bouts_.items():
+        dist_x.append(b)
+        dist_y.append(np.sum(bouts_list))
+
+    fig = plt.figure(figsize=(6, 5))
+    plt.bar(dist_x, dist_y, tick_label=[c.capitalize() for c in state_names])
+    plt.xlabel('Behavior')
+    plt.ylabel('Duration (%s)' % norm_type)
+    if title is None:
+        title = 'Behavior distribution'
+    plt.title(title)
+    plt.tight_layout()
+
+    if save_file:
+        plt.savefig(save_file)
+
+    plt.show()
+
+
+def get_state_colors(n_colors=6):
+    """
+
+    Parameters
+    ----------
+    n_colors : int
+        total number of colors to use in colormap (number of states)
+
+    Returns
+    -------
+    matplotlib.cm.ListedColormap
+
+    """
+    import matplotlib.cm as cm
+    tmp = cm.get_cmap('tab10', 10)  # cm.get_cmap('Accent', 6)
+    cmap = cm.get_cmap('tab10', n_colors)
+    cmap.colors[0, :] = [0, 0, 0, .4]
+    cmap.colors[1:, :] = tmp.colors[:n_colors - 1]
+    return cmap
+
+
+def plot_markers_and_states(
+        times, markers, states, title, ax, cmap, ymin=None, ymax=None, spc=None,
+        marker_names=None):
+    """Plot markers or features with background color denoting discrete state.
+
+    Parameters
+    ----------
+    times : array-like
+        x-values of markers, shape (n_t,)
+    markers : array-like
+        shape (n_t, n_markers/n_features)
+    states : array-like
+        dense representation of discrete states, shape (n_t,)
+    title : str or NoneType
+        axis title
+    ax : matplotlib.axes.Axes object
+        axis in which to plot the markers and states
+    cmap : matplotlib.cm.ListedColormap
+        colormap for discrete states
+    ymin : float, optional
+    ymax : float, optional
+    spc : float, optional
+        control spacing between markers/features
+    marker_names : list, optional
+        marker names for y-axis labels
+
+    """
+
+    if ymin is None:
+        ymin = np.min(markers)
+    if ymax is None:
+        ymax = np.max(markers)
+    if spc is None:
+        raise NotImplementedError
+    n_frames = states.shape[0]
+    n_colors = cmap.colors.shape[0]
+    states_aug = np.concatenate([states[None, :], np.array([[0, n_colors - 1]])], axis=1)
+    im = ax.imshow(
+        states_aug, aspect='auto',
+        extent=(0, n_frames - 1, ymin, ymax), interpolation='none',
+        cmap=cmap)
+    # plot markers
+    n_markers = markers.shape[1]
+    for n in range(n_markers):
+        ax.plot(times, markers[:, n], color='k', linewidth=1)
+    ax.set_xlim([0, n_frames - 1])
+    if marker_names is not None:
+        ax.set_yticks(spc * np.arange(len(marker_names)))
+        ax.set_yticklabels(marker_names, fontsize=10)
+    else:
+        ax.set_yticks([])
+        ax.set_yticklabels([])
+    if title is not None:
+        ax.set_title(title)
+    return im
+
+
+def plot_bout_onsets_w_features(
+        bouts, markers, marker_names, probs, states, state_names,
+        frame_win=200, framerate=1, max_n_ex=10, min_bout_len=5, title=None, save_file=None,
+):
+    """Plot array of behavior bout examples aligned to bout onset; each example is markers+states.
+
+    Parameters
+    ----------
+    bouts : array-like
+        shape (n_bouts, 3) where the 3 cols are (chunk_idx, idx_start, idx_end). `chunk_idx`
+        denotes the index of the original list of state arrays that the current bout is found in,
+        `idx_start` and `idx_end` denote the start/end indices of the current bout with respect to
+        the chunk.
+    markers : array-like
+        shape (n_t, n_markers)
+    marker_names : list
+        name for each column in `markers`
+    probs : array-like
+        shape (n_t, n_states)
+    states : array-like
+        shape (n_t,)
+    state_names : list
+        name for each discrete behavioral state
+    frame_win : int, optional
+        number of frames before/after bout onset to plot
+    framerate : int, optional
+        framerate of the original video; if None, bout durations are reported in frames, if float
+        then seconds are used
+    max_n_ex : int, optional
+        max number of bout examples to plot
+    min_bout_len : int, optional
+        minimum length of bout required for plotting example
+    title : str, optional
+        figure title
+    save_file : str, optional
+        absolute path for saving (including extension)
+
+    """
+
+    n_colors = len(state_names)
+    cmap = get_state_colors(n_colors=n_colors)
+
+    n_markers = markers.shape[1]
+    markers_z = (markers - np.mean(markers, axis=0)) / np.std(markers, axis=0)
+    spc = 0.2 * abs(markers_z.max())
+    plotting_markers = markers_z + spc * np.arange(n_markers)
+    ymin = min(-spc - 0.5, np.percentile(plotting_markers, 2))
+    ymax = max(spc * n_markers, np.percentile(plotting_markers, 98))
+
+    n_ex = min(bouts.shape[0], max_n_ex)
+    n_cols = 2
+    n_rows = int(np.ceil(n_ex / n_cols))
+
+    n_secs = np.floor(frame_win / framerate) - 1
+    xticklabels = np.array([-n_secs, -n_secs / 2, 0, n_secs / 2, n_secs])
+    xticks = xticklabels * framerate + frame_win
+
+    if n_ex < 6:
+        offset = 1
+    else:
+        offset = 0
+    fig_width = 8
+    fig_height = 2.5 * n_ex // 2 + offset
+    plt.cla()
+    plt.clf()
+    fig = plt.figure(figsize=(fig_width, fig_height), constrained_layout=True)
+    outer_grid = fig.add_gridspec(n_ex // 2, 2, hspace=0.15)
+    inner_grid = [outer_grid[r].subgridspec(2, 1, hspace=0, height_ratios=[2, 1])
+                  for r in range(n_ex)]
+
+    # get rid of bouts that fall outside of our window
+    flare_bouts_clean = bouts[bouts[:, 1] > frame_win]
+    # get rid of short bouts
+    bout_lens = flare_bouts_clean[:, 2] - flare_bouts_clean[:, 1]
+    flare_bouts_clean = flare_bouts_clean[bout_lens >= min_bout_len]
+    flare_ex_idxs = np.sort(np.random.permutation(flare_bouts_clean.shape[0])[:n_ex])
+
+    for ex in range(n_ex):
+
+        col = ex % n_cols
+        row = int(np.floor(ex / n_cols))
+        axes = inner_grid[ex].subplots()
+
+        idx_align = flare_bouts_clean[flare_ex_idxs[ex], 1]
+        slc = (idx_align - frame_win, idx_align + frame_win)
+
+        # state predictions
+        a = 0
+        plot_markers_and_states(
+            times=np.arange(slc[1] - slc[0]),
+            markers=plotting_markers[slice(*slc)],
+            states=states[slice(*slc)],
+            marker_names=marker_names if col == 0 else None,
+            cmap=cmap,
+            title=None, ax=axes[a], ymin=ymin, ymax=ymax, spc=spc)
+        axes[a].axvline(frame_win, color='k')
+        axes[a].set_xticks([])
+
+        # probabilities
+        a = 1
+        for l in range(probs.shape[1]):
+            axes[a].plot(probs[slice(*slc), l], color=cmap.colors[l])
+        axes[a].set_xlim([0, slc[1] - slc[0]])
+        axes[a].axvline(frame_win, color='k')
+        xticklabels_ = xticklabels + idx_align / framerate
+        axes[a].set_xticks(xticks)
+        axes[a].set_xticklabels(['%5.1f' % x for x in xticklabels_], fontsize=9)
+        axes[a].tick_params(axis='x', which='major', pad=1)
+        if col == 0:
+            axes[a].set_yticks([0, 1])
+            axes[a].set_yticklabels([0, 1], fontsize=10)
+            axes[a].set_ylabel(
+                'probability', rotation='horizontal', ha='right', va='center',
+                fontsize=10)
+        if row == (n_rows - 1):
+            axes[a].set_xlabel('Time (sec)')
+
+    if n_rows < 3:
+        top = 0.85
+    elif n_rows < 2:
+        top = 0.8
+    else:
+        top = 0.93
+
+    fig.subplots_adjust(right=0.8)
+    # lower left corner in [0.83, 0.85]
+    # axes width 0.02 and height 0.10
+    r = (7 * 0.25) / fig_height  # height of good bar / height of full examples sheet
+    bar_height = r  # 0.10
+    bar_bot = top - r  # 0.85
+    cb_ax = fig.add_axes([0.83, bar_bot, 0.02, bar_height])
+    sm = plt.cm.ScalarMappable(cmap=cmap)  # so that we don't have to use an axis output
+    sm.set_array([])
+    cbar = fig.colorbar(sm, cax=cb_ax)
+
+    l = len(state_names)
+    lp1 = 1 / (2 * l)
+    cbar.set_ticks(np.linspace(lp1, 1 - lp1, l))
+    cbar.ax.set_yticklabels(state_names)  # vertically oriented colorbar
+
+    plt.subplots_adjust(top=top)
+    if title is None:
+        title = 'Behavioral bout onsets'
+    plt.suptitle(title, fontsize=14)
+
+    plt.tight_layout()
+
+    if save_file is not None:
+        plt.savefig(save_file)
+
+    plt.show()

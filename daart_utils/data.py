@@ -497,7 +497,7 @@ class Video(object):
         Returns
         -------
         np.ndarray
-            returned frames of shape shape (n_frames, n_channels, ypix, xpix)
+            returned frames of shape (n_frames, n_channels, ypix, xpix)
 
         """
         from daart_utils.videos import get_frames_from_idxs

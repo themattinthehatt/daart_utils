@@ -10,6 +10,7 @@ scikit-image
 scikit-learn
 scipy>=1.2.0
 seaborn
+streamlit
 tables
 test-tube
 torch==1.8.0

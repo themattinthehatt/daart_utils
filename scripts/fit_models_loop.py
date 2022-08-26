@@ -61,7 +61,11 @@ def run_main(args):
         for sess_ids in sess_ids_list:
 
             # modify configs
-            update_config(config_files['model'], 'model_type', model_type)
+            update_config(config_files['model'], 'backbone', model_type)
+            if model_type == 'random-forest':
+                update_config(config_files['model'], 'model_class', model_type)
+            else:
+                update_config(config_files['model'], 'model_class', 'segmenter')
             update_config(config_files['data'], 'expt_ids', sess_ids)
             update_config(config_files['data'], 'data_dir', os.path.join(data_path, args.dataset))
             update_config(config_files['data'], 'results_dir', os.path.join(results_path, args.dataset))

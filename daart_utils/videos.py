@@ -49,7 +49,9 @@ def get_frames_from_idxs(cap, idxs):
     return frames
 
 
-def make_labeled_video(save_file, frames, markers=None, labels=None, framerate=20, height=4):
+def make_labeled_video(
+        save_file, frames, frame_idxs=None, markers=None, probs=None, state_names=None,
+        framerate=20, height=4):
     """Behavioral video overlaid with markers and discrete labels.
 
     Parameters
@@ -58,11 +60,14 @@ def make_labeled_video(save_file, frames, markers=None, labels=None, framerate=2
         absolute path of filename (including extension)
     frames : np.ndarray
         array of shape (n_frames, n_channels, ypix, xpix)
+    frame_idxs : array-like
+        frame index for each frame
     markers : dict, optional
         keys of marker names and vals of marker values, i.e. `markers[<bodypart>].shape = (n_t, 2)`
-    labels : dict, optional
-        keys of label names and vals of label presence, i.e. `labels[<label>].shape = (n_t,)` and
-        is a boolean array
+    probs : array-like
+        shape (n_t, n_states)
+    state_names : list
+        name for each discrete behavioral state
     framerate : float, optional
         framerate of video
     height : float, optional
@@ -86,8 +91,16 @@ def make_labeled_video(save_file, frames, markers=None, labels=None, framerate=2
     plt.subplots_adjust(wspace=0, hspace=0, left=0, bottom=0, right=1, top=1)
 
     txt_kwargs = {
-        'fontsize': 16, 'color': [1, 1, 1], 'horizontalalignment': 'left',
-        'verticalalignment': 'top', 'fontname': 'monospace', 'transform': ax.transAxes}
+        'fontsize': 14, 'color': [1, 1, 1], 'horizontalalignment': 'left',
+        'verticalalignment': 'top', 'fontname': 'monospace', 'transform': ax.transAxes,
+        'bbox': dict(facecolor='k', alpha=0.25, edgecolor='none'),
+    }
+
+    txt_fr_kwargs = {
+        'fontsize': 14, 'color': [1, 1, 1], 'horizontalalignment': 'left',
+        'verticalalignment': 'bottom', 'fontname': 'monospace', 'transform': ax.transAxes,
+        'bbox': dict(facecolor='k', alpha=0.25, edgecolor='none'),
+    }
 
     for n in tqdm(range(n_frames)):
 
@@ -102,14 +115,19 @@ def make_labeled_video(save_file, frames, markers=None, labels=None, framerate=2
                 ax.plot(marker_vals[n, 0], marker_vals[n, 1], 'o', markersize=8)
 
         # annotate with labels
-        if labels is not None:
+        if probs is not None and state_names is not None and frame_idxs is not None:
             # collect all labels present on this frame
             label_txt = ''
-            for label_name, label_vals in labels.items():
-                if label_vals[n] == 1:
-                    label_txt += '%s\n' % label_name
+            for s, state_name in enumerate(state_names):
+                label_txt += '%s: %1.2f' % (state_name, probs[frame_idxs[n], s])
+                if s != len(state_names) - 1:
+                    label_txt += '\n'
             # plot label string
-            ax.text(0.05, 0.95, label_txt, **txt_kwargs)
+            ax.text(0.02, 0.98, label_txt, **txt_kwargs)
+
+        # add frame number
+        if frame_idxs is not None:
+            ax.text(0.02, 0.02, 'frame %i' % frame_idxs[n], **txt_fr_kwargs)
 
         plt.savefig(os.path.join(tmp_dir, 'frame_%06i.jpeg' % n))
 

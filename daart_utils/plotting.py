@@ -1,8 +1,12 @@
 """Plotting functions for daart models."""
 
+import copy
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+
+from daart.eval import run_lengths
 
 
 def plot_heatmaps(
@@ -190,6 +194,9 @@ def plot_bout_histograms(
                 bins=bins,
             )
             ax.set_xscale('log')
+            ticks = np.around(10 ** np.arange(0, m, m / 4), decimals=2)
+            ax.set_xticks(ticks)
+            ax.set_xticklabels(ticks)
             if a % n_cols == 0:
                 # left edge
                 ax.set_ylabel('Count')
@@ -215,15 +222,37 @@ def plot_bout_histograms(
     plt.show()
 
 
+def compute_transition_matrix(states, n_states=None):
+
+    if n_states is None:
+        n_states = len(np.unique(states))
+
+    # get array of bout ids rather than frame-wise behavior ids
+    # i.e. [0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 2, 2, 2, 2, 2] -> [0, 1, 0, 2]
+    idxs_change = np.diff(states)
+    bout_ids = states[np.where(idxs_change != 0)[0]]
+
+    trans_mat = np.nan * np.zeros((n_states, n_states))
+    for n in range(n_states):
+        idxs_tmp = np.where(bout_ids == n)[0]
+        next_bout = bout_ids[idxs_tmp[:-1] + 1]
+        for m in range(n_states):
+            if n == m:
+                continue
+            else:
+                # find next state
+                trans_mat[n, m] = len(np.where(next_bout == m)[0]) / len(next_bout)
+
+    return trans_mat
+
+
 def plot_behavior_distribution(
-        bouts, state_names=None, framerate=None, title=None, save_file=None):
+        states, state_names=None, framerate=None, title=None, save_file=None):
     """Plot a single bar plot of total behavior durations.
 
     Parameters
     ----------
-    bouts : dict
-        output of daart.eval.run_lengths
-        keys are behavior numbers, vals are lists of bout durations
+    states : array-like
     state_names : list, optional
     framerate : float, optional
         framerate of the original video; if None, bout durations are reported in frames, if float
@@ -235,8 +264,17 @@ def plot_behavior_distribution(
 
     """
 
+    if state_names is not None:
+        n_states = len(state_names)
+    else:
+        n_states = len(np.unique(states))
+
+    bouts = run_lengths(states)
+    trans_mat = compute_transition_matrix(states, n_states=n_states)
+
     if not state_names:
-        state_names = ['class_%i' % i for i in range(len(bouts))]
+        state_names = ['class_%i' % i for i in range(n_states)]
+    state_names = [c.capitalize() for c in state_names]
 
     if framerate is not None:
         bouts_ = {k: np.array(v) / framerate for k, v in bouts.items()}
@@ -251,13 +289,47 @@ def plot_behavior_distribution(
         dist_x.append(b)
         dist_y.append(np.sum(bouts_list))
 
-    fig = plt.figure(figsize=(6, 5))
-    plt.bar(dist_x, dist_y, tick_label=[c.capitalize() for c in state_names])
-    plt.xlabel('Behavior')
-    plt.ylabel('Duration (%s)' % norm_type)
-    if title is None:
-        title = 'Behavior distribution'
-    plt.title(title)
+    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+
+    # bar plot of behaviors
+    ax = axes[0]
+    ax.bar(dist_x, dist_y, tick_label=state_names)
+    ax.set_xlabel('Behavior', fontsize=12)
+    ax.set_ylabel('Duration (%s)' % norm_type, fontsize=12)
+    ax.set_title('Behavior distribution', fontsize=14)
+
+    # bout transition matrix
+    ax = axes[1]
+    cmap = copy.copy(mpl.cm.get_cmap("Blues_r"))
+    cmap.set_bad('black', 1.0)
+    im = ax.imshow(trans_mat, cmap=cmap, vmin=0, vmax=1)
+    ax.set_xticks(np.arange(n_states))
+    ax.set_xticklabels(state_names)
+    ax.set_xlabel('State n+1', fontsize=12)
+    ax.set_yticks(np.arange(n_states))
+    ax.set_yticklabels(state_names)
+    ax.set_ylabel('State n', fontsize=12)
+    for (j, i), label in np.ndenumerate(trans_mat):
+        if i == j:
+            continue
+        if label < 0.4:
+            fontcolor = 'white'
+        else:
+            fontcolor = 'black'
+        ax.text(
+            i, j, np.around(label, 2),
+            ha='center', va='center',
+            color=fontcolor, fontsize=12)
+    ax.set_title('Empirical bout transition probabilities', fontsize=14)
+    # fig.subplots_adjust(right=0.8)
+    # # lower left corner in [0.83, 0.25]
+    # # axes width 0.02 and height 0.8
+    # cb_ax = fig.add_axes([0.83, 0.25, 0.04, 0.5])
+    # fig.colorbar(im, cax=cb_ax)
+
+    if title is not None:
+        plt.suptitle(title, fontsize=16)
+
     plt.tight_layout()
 
     if save_file:

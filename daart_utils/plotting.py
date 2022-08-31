@@ -4,6 +4,7 @@ import copy
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy
 import seaborn as sns
 
 from daart.eval import run_lengths
@@ -338,6 +339,56 @@ def plot_behavior_distribution(
     plt.show()
 
 
+def plot_rate_scatters(df, state_names, title=None, save_file=None, **kwargs):
+
+    n_states = len(state_names)
+    n_cols = 2
+    n_rows = int(np.ceil(n_states / n_cols))
+
+    fig, axes = plt.subplots(n_cols, n_rows, figsize=(5 * n_cols, 4 * n_rows))
+    axes = axes.flatten()
+    for ax in axes:
+        ax.set_axis_off()
+
+    for a, label in enumerate(state_names):
+
+        ax = axes[a]
+        ax.set_axis_on()
+
+        # plot points
+        x = 'rate_%s_hand' % label
+        y = 'rate_%s_model' % label
+        ax = sns.regplot(x=x, y=y, data=df, fit_reg=True, ax=ax)
+
+        # plot line of best fit
+        slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(df[x], df[y])
+        mn = 0.95 * np.min([df[x].min(), df[y].min()])
+        mx = 1.05 * np.max([df[x].max(), df[y].max()])
+        ax.plot([mn, mx], [mn, mx], '--', color='k')
+        ax.text(
+            0.7, 0.3, 'slope: %1.2f' % slope, ha='left', va='bottom', fontsize=14,
+            transform=ax.transAxes)
+        ax.text(
+            0.7, 0.2, 'r: %1.2f' % r_value, ha='left', va='bottom', fontsize=14,
+            transform=ax.transAxes)
+        ax.text(
+            0.7, 0.1, 'N: %i' % df.shape[0], ha='left', va='bottom', fontsize=14,
+            transform=ax.transAxes)
+
+        ax.set_xlabel('%s rate (hand)' % label.capitalize())
+        ax.set_ylabel('%s rate (model)' % label.capitalize())
+
+    if title is not None:
+        plt.suptitle(title)
+
+    plt.tight_layout()
+
+    if save_file:
+        plt.savefig(save_file)
+
+    plt.show()
+
+
 def get_state_colors(n_colors=6):
     """
 
@@ -417,7 +468,7 @@ def plot_markers_and_states(
 
 
 def plot_bout_onsets_w_features(
-        bouts, markers, marker_names, probs, states, state_names,
+        bouts, markers, marker_names, probs, states, state_names, states_hand=None,
         frame_win=200, framerate=1, max_n_ex=10, min_bout_len=5, title=None, save_file=None,
         **kwargs
 ):
@@ -440,6 +491,8 @@ def plot_bout_onsets_w_features(
         shape (n_t,)
     state_names : list
         name for each discrete behavioral state
+    states_hand : array-like
+        shape (n_t,); ground truth hand labels that will be added to plots if present
     frame_win : int, optional
         number of frames before/after bout onset to plot
     framerate : int, optional
@@ -455,6 +508,9 @@ def plot_bout_onsets_w_features(
         absolute path for saving (including extension)
 
     """
+
+    sns.set_context('paper')
+    sns.set_style('white')
 
     n_colors = len(state_names)
     cmap = get_state_colors(n_colors=n_colors)
@@ -483,16 +539,21 @@ def plot_bout_onsets_w_features(
     plt.cla()
     plt.clf()
     fig = plt.figure(figsize=(fig_width, fig_height), constrained_layout=True)
-    outer_grid = fig.add_gridspec(n_ex // 2, 2, hspace=0.15)
-    inner_grid = [outer_grid[r].subgridspec(2, 1, hspace=0, height_ratios=[2, 1])
-                  for r in range(n_ex)]
+    outer_grid = fig.add_gridspec(n_ex // 2, 2, hspace=0.2)
+    if states_hand is not None:
+        inner_grid = [
+            outer_grid[r].subgridspec(4, 1, hspace=0, height_ratios=[0.5, 0.1, 2, 1])
+            for r in range(n_ex)]
+    else:
+        inner_grid = [
+            outer_grid[r].subgridspec(2, 1, hspace=0, height_ratios=[2, 1]) for r in range(n_ex)]
 
     # get rid of bouts that fall outside of our window
-    flare_bouts_clean = bouts[bouts[:, 1] > frame_win]
+    bouts_clean = bouts[bouts[:, 1] > frame_win]
     # get rid of short bouts
-    bout_lens = flare_bouts_clean[:, 2] - flare_bouts_clean[:, 1]
-    flare_bouts_clean = flare_bouts_clean[bout_lens >= min_bout_len]
-    flare_ex_idxs = np.sort(np.random.permutation(flare_bouts_clean.shape[0])[:n_ex])
+    bout_lens = bouts_clean[:, 2] - bouts_clean[:, 1]
+    bouts_clean = bouts_clean[bout_lens >= min_bout_len]
+    bout_ex_idxs = np.sort(np.random.permutation(bouts_clean.shape[0])[:n_ex])
 
     for ex in range(n_ex):
 
@@ -500,11 +561,32 @@ def plot_bout_onsets_w_features(
         row = int(np.floor(ex / n_cols))
         axes = inner_grid[ex].subplots()
 
-        idx_align = flare_bouts_clean[flare_ex_idxs[ex], 1]
+        idx_align = bouts_clean[bout_ex_idxs[ex], 1]
         slc = (idx_align - frame_win, idx_align + frame_win)
 
+        a = -1
+
+        # hand labels
+        if states_hand is not None:
+            a += 1
+            states_aug = np.concatenate([
+                states_hand[None, slice(*slc)], np.array([[0, n_colors - 1]])], axis=1)
+            axes[a].imshow(
+                states_aug, aspect='auto', interpolation='none', cmap=cmap,
+                extent=(0, slc[1] - slc[0], 0, 1))
+            axes[a].axvline(frame_win, color='k')
+            if col == 0:
+                axes[a].text(
+                    -0.02, 0.25, 'hand', ha='right', transform=axes[a].transAxes, fontsize=10)
+            axes[a].set_xticks([])
+            axes[a].set_yticks([])
+
+            # space
+            a += 1
+            axes[a].set_axis_off()
+
         # state predictions
-        a = 0
+        a += 1
         plot_markers_and_states(
             times=np.arange(slc[1] - slc[0]),
             markers=plotting_markers[slice(*slc)],
@@ -516,7 +598,7 @@ def plot_bout_onsets_w_features(
         axes[a].set_xticks([])
 
         # probabilities
-        a = 1
+        a += 1
         for l in range(probs.shape[1]):
             axes[a].plot(probs[slice(*slc), l], color=cmap.colors[l])
         axes[a].set_xlim([0, slc[1] - slc[0]])
@@ -532,7 +614,7 @@ def plot_bout_onsets_w_features(
                 'probability', rotation='horizontal', ha='right', va='center',
                 fontsize=10)
         if row == (n_rows - 1):
-            axes[a].set_xlabel('Time (sec)')
+            axes[a].set_xlabel('Time (sec)', fontsize=14)
 
     if n_rows < 3:
         top = 0.85

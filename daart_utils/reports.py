@@ -1,43 +1,35 @@
 import numpy as np
 import os
+import pandas as pd
 from scipy.signal import medfilt
 import torch
 from typing import Optional
 import yaml
 
 from daart.data import load_feature_csv, DataGenerator
-from daart.eval import run_lengths
+from daart.eval import get_precision_recall, run_lengths, plot_training_curves
 from daart.models import Segmenter
 from daart.transforms import ZScore
 
-from daart_utils.data import Video
-from daart_utils.plotting import \
-    plot_bout_histograms, plot_behavior_distribution, plot_bout_onsets_w_features
+from daart_utils.data import DataHandler, Video
+from daart_utils.plotting import (
+    plot_bout_histograms,
+    plot_behavior_distribution,
+    plot_bout_onsets_w_features,
+    plot_rate_scatters,
+)
 from daart_utils.videos import make_labeled_video, make_syllable_video
 from daart_utils.utils import get_label_runs
 
 
-class ReportGenerator:
-    """Generate a report that includes plots and videos.
+def update_kwargs_dict_with_defaults(kwargs_new, kwargs_default):
+    for key, val in kwargs_default.items():
+        if key not in kwargs_new:
+            kwargs_new[key] = val
+    return kwargs_new
 
-    Examples
-    --------
-    # initialize object for labeled frames
-    reporter = GenerateReport(
-        model_dir="/path/to/model_directory",
-        features_dir="/path/to/features_directory",
-        videos_dir="/path/to/videos_directory"
-    )
-    # create report
-    report_dir = reporter.generate_report(save_dir="/path/to/report_dir", format="pdf")
 
-    Notes
-    -----
-    * this class cannot be imported into a notebook, it must be run in a script
-    * csv files in features_directory must be named "<sess_id>_labeled.csv"
-    * mp4 files in videos_directory must be names "<sess_id>.mp4"
-
-    """
+class ReportGeneratorBase:
 
     def __init__(self, model_dir: str):
         """
@@ -53,9 +45,14 @@ class ReportGenerator:
         self.model_dir = model_dir
 
         # load model
-        self._load_model()
+        self.model_file = None
+        self.hparams_file = None
+        self.hparams = None
+        self.model = None
+        self.state_names = None
+        self.load_model()
 
-    def _load_model(self):
+    def load_model(self):
 
         model_file = os.path.join(self.model_dir, 'best_val_model.pt')
 
@@ -74,12 +71,6 @@ class ReportGenerator:
         self.model = model
         self.state_names = hparams['class_names']
 
-    @staticmethod
-    def find_session_ids(features_dir):
-        features_files = os.listdir(features_dir)
-        sess_ids = [os.path.basename(f).split('_labeled')[0] for f in features_files]
-        return sess_ids
-
     def compute_states(self, sess_id, features_file, overwrite=False):
 
         # define data generator signals
@@ -96,13 +87,13 @@ class ReportGenerator:
             sequence_pad=hparams['sequence_pad'], input_type=hparams['input_type'])
 
         # load/predict probabilities from model
-        probs_file = os.path.join(self.model_dir, '%s_labels.npy' % sess_id)
+        probs_file = os.path.join(self.model_dir, '%s_states.npy' % sess_id)
         if os.path.exists(probs_file) and not overwrite:
             print('loading states from %s...' % probs_file, end='')
             probs = np.load(probs_file)
             print('done')
         else:
-            print('computing states...', end='')
+            print('computing states for %s...' % sess_id, end='')
             tmp = self.model.predict_labels(data_gen_test, return_scores=True)
             probs = np.vstack(tmp['labels'][0])
             print('done')
@@ -115,15 +106,59 @@ class ReportGenerator:
 
         return probs, states
 
+    def generate_report(self, *args, **kwargs):
+        raise NotImplementedError
+
+
+class ReportGenerator(ReportGeneratorBase):
+    """Generate a diagnostic report for unlabeled sessions that includes plots and videos.
+
+    Examples
+    --------
+    # initialize object for unlabeled sessions
+    reporter = GenerateReport(model_dir="/path/to/model_directory")
+    # create report
+    report_dir = reporter.generate_report(
+        save_dir="/path/to/report_dir",
+        features_dir="/path/to/features_directory",
+        videos_dir="/path/to/videos_directory",
+        format="pdf")
+
+    Notes
+    -----
+    * csv files in features_directory must be named "<sess_id>_labeled.csv"
+    * mp4 files in videos_directory must be names "<sess_id>.mp4"
+
+    """
+
+    def __init__(self, model_dir: str):
+        """
+
+        Parameters
+        ----------
+        model_dir
+            directory that contains `best_val_model.pt` and `hparams.yaml` files
+
+        """
+        # store `model_dir` and load model
+        super().__init__(model_dir=model_dir)
+
+    @staticmethod
+    def find_session_ids(features_dir):
+        features_files = os.listdir(features_dir)
+        sess_ids = [os.path.basename(f).split('_labeled')[0] for f in features_files]
+        return sess_ids
+
     def generate_report(
             self,
             save_dir: str,
             features_dir: str,
-            format: str = "pdf",
+            format: str = 'pdf',
             bout_example_kwargs: dict = {},
             video_kwargs: dict = {},
             video_framerate: Optional[int] = None,
             videos_dir: Optional[dir] = None,
+            **kwargs
     ) -> str:
         """
 
@@ -200,13 +235,6 @@ class ReportGenerator:
         return save_dir
 
 
-def update_kwargs_dict_with_defaults(kwargs_new, kwargs_default):
-    for key, val in kwargs_default.items():
-        if key not in kwargs_new:
-            kwargs_new[key] = val
-    return kwargs_new
-
-
 def generate_report(
         sess_id,
         probs,
@@ -221,6 +249,31 @@ def generate_report(
         video_framerate,
         video_file,
 ):
+    """Produce diagnostic plots and videos for segmenation model on unlabeled data.
+
+    Outputs:
+    * histograms of bout durations for each behavior
+    * distribution of behaviors + empirical transition matrix
+    * bout examples for each behavior (features, probabilities, states)
+    * [optional] labeled video using part of session with lots of state switches
+    * [optional] syllable video
+
+    Parameters
+    ----------
+    sess_id
+    probs
+    states
+    state_names
+    features
+    feature_names
+    save_dir
+    format
+    bout_example_kwargs
+    video_kwargs
+    video_framerate
+    video_file
+
+    """
 
     # parse inputs
     bout_example_kwargs_default = {
@@ -312,3 +365,200 @@ def generate_report(
         make_syllable_video(
             save_file, states, video_obj, markers=None, single_label=None,
             label_mapping=label_mapping, probs=probs, **video_kwargs)
+
+
+class ReportGeneratorTraining(ReportGeneratorBase):
+    """Generate a report after model training that includes plots and videos of labeled data.
+
+    Examples
+    --------
+    # initialize object for training sessions
+    reporter = GenerateReportTraining(
+        model_dir="/path/to/model_directory",
+    )
+    # create report
+    report_dir = reporter.generate_report(save_dir="/path/to/report_dir", format="pdf")
+
+    Notes
+    -----
+    * csv files in features_directory must be named "<sess_id>_labeled.csv"
+    * mp4 files in videos_directory must be names "<sess_id>.mp4"
+
+    """
+
+    def __init__(self, model_dir: str):
+        """
+
+        Parameters
+        ----------
+        model_dir
+            directory that contains `best_val_model.pt` and `hparams.yaml` files
+
+        """
+        # store `model_dir` and load model
+        super().__init__(model_dir=model_dir)
+
+    def generate_report(
+            self,
+            sess_ids: list,
+            data_dir: str,
+            input_type: str,
+            behaviors_to_keep: Optional[list] = None,
+            video_framerate: Optional[int] = None,
+            format: str = 'pdf',
+            bout_example_kwargs: dict = {},
+            **kwargs
+    ):
+
+        # collect info from each session
+        metrics_df = []
+        probs_pred_dict = {}
+        states_pred_dict = {}
+        states_hand_dict = {}
+        features_dict = {}
+        feature_names = None
+        for sess_id in sess_ids:
+
+            # initialize data handler; point to correct base path
+            handler = DataHandler(sess_id, base_path=data_dir)
+            if input_type == 'markers':
+                handler.load_markers()
+                features = handler.markers.vals
+                feature_names = handler.markers.names
+                input_file = handler.markers.path
+            else:
+                handler.load_features(dirname=input_type)
+                features = handler.features.vals
+                feature_names = handler.features.names
+                input_file = handler.features.path
+
+            # compute states from features
+            probs_pred, states_pred = self.compute_states(sess_id, input_file)
+
+            # load hand labels; update hand labels to only contain beh of interest
+            handler.load_hand_labels()
+            state_names = handler.hand_labels.names
+            states_all = np.argmax(handler.hand_labels.vals, axis=1)
+            if behaviors_to_keep is None:
+                behaviors_to_keep = [l for l in state_names if l != 'background']
+            cols_to_keep = [np.where(np.array(state_names) == b)[0][0] for b in behaviors_to_keep]
+            states = np.zeros_like(states_all)
+            for c, col_to_keep in enumerate(cols_to_keep):
+                pos_idxs = np.where(states_all == col_to_keep)[0]
+                states[pos_idxs] = c + 1
+            cutoff = int(np.floor(states.shape[0] / self.hparams['sequence_length'])) \
+                * self.hparams['sequence_length']
+            states = states[:cutoff]
+
+            # compute precision and recall
+            scores = get_precision_recall(states, states_pred, background=None)
+
+            # store info
+            df_dict = {'sess_id': sess_id}
+            for c, beh in enumerate(['background'] + behaviors_to_keep):
+                df_dict['precision_%s' % beh] = scores['precision'][c]
+                df_dict['recall_%s' % beh] = scores['recall'][c]
+                df_dict['f1_%s' % beh] = scores['f1'][c]
+                df_dict['rate_%s_hand' % beh] = len(np.where(states == c)[0]) / states.shape[0]
+                df_dict['rate_%s_model' % beh] = \
+                    len(np.where(states_pred == c)[0]) / states_pred.shape[0]
+            metrics_df.append(pd.DataFrame(df_dict, index=[0]))
+
+            probs_pred_dict[sess_id] = probs_pred
+            states_pred_dict[sess_id] = states_pred
+            states_hand_dict[sess_id] = states
+            features_dict[sess_id] = features
+
+        # combine all metrics into a single dataframe
+        metrics_df = pd.concat(metrics_df)
+
+        # generate diagnostic plots
+        generate_training_report(
+            metrics_df=metrics_df,
+            probs_pred_dict=probs_pred_dict,
+            states_pred_dict=states_pred_dict,
+            states_hand_dict=states_hand_dict,
+            state_names=self.state_names,
+            features_dict=features_dict,
+            feature_names=feature_names,
+            train_metrics_file=os.path.join(self.model_dir, 'metrics.csv'),
+            train_sess_ids=self.hparams['expt_ids'],
+            video_framerate=video_framerate,
+            save_dir=os.path.join(self.model_dir, 'diagnostics'),
+            format=format,
+            bout_example_kwargs=bout_example_kwargs,
+            **kwargs
+        )
+
+
+def generate_training_report(
+        metrics_df,
+        probs_pred_dict,
+        states_pred_dict,
+        states_hand_dict,
+        state_names,
+        features_dict,
+        feature_names,
+        train_metrics_file,
+        train_sess_ids,
+        video_framerate,
+        save_dir,
+        format,
+        bout_example_kwargs,
+        **kwargs
+):
+
+    # parse inputs
+    bout_example_kwargs_default = {
+        'features_to_plot': None,
+        'frame_win': 200,
+        'max_n_ex': 10,
+        'min_bout_len': 5,
+    }
+    bout_example_kwargs = update_kwargs_dict_with_defaults(
+        bout_example_kwargs, bout_example_kwargs_default)
+
+    os.makedirs(save_dir, exist_ok=True)
+
+    # ------------------------------------------------
+    # plots
+    # ------------------------------------------------
+
+    # training curves on train data
+    plot_training_curves(
+        train_metrics_file, dtype='train', expt_ids=train_sess_ids,
+        save_file=os.path.join(save_dir, 'train_curves'), format=format)
+
+    # training curves on validation data
+    plot_training_curves(
+        train_metrics_file, dtype='val', expt_ids=train_sess_ids,
+        save_file=os.path.join(save_dir, 'val_curves'), format=format)
+
+    # scatterplot of hand vs model rates
+    save_file = os.path.join(save_dir, 'behavior_rate_scatters.%s' % format)
+    title = None  # 'Session %s' % sess_id
+    plot_rate_scatters(df=metrics_df, state_names=state_names, title=title, save_file=save_file)
+
+    # plot examples of each behavior type (probs + markers + pred states + hand states)
+    if bout_example_kwargs['features_to_plot'] is None:
+        bout_example_kwargs['features_to_plot'] = feature_names
+    idxs_features = np.where(
+        np.isin(np.array(feature_names), np.array(bout_example_kwargs['features_to_plot'])))[0]
+    for sess_id in features_dict.keys():
+        features = features_dict[sess_id]
+        features_ = features[:, idxs_features]
+        states = states_pred_dict[sess_id]
+        states_hand = states_hand_dict[sess_id]
+        probs = probs_pred_dict[sess_id]
+        bouts_w_idxs = get_label_runs([states_hand])
+        for b, bouts_list in enumerate(bouts_w_idxs):
+            state_name = state_names[b]
+            save_file = os.path.join(
+                save_dir, '%s_ethograms_%s_onset.%s' % (sess_id, state_name, format))
+            f1 = metrics_df[metrics_df.sess_id == sess_id]['f1_%s' % state_name].values[0]
+            title = '%s (%s onsets, F1=%1.2f)' % (sess_id, state_name, f1)
+            plot_bout_onsets_w_features(
+                bouts_list, markers=features_,
+                marker_names=bout_example_kwargs['features_to_plot'],
+                probs=probs, states=states, states_hand=states_hand, state_names=state_names,
+                framerate=video_framerate, title=title, save_file=save_file, **bout_example_kwargs)

@@ -32,9 +32,12 @@ from pathlib import Path
 import streamlit as st
 import yaml
 
+from daart.data import load_feature_csv, DataGenerator
+from daart.models import Segmenter
+from daart.transforms import ZScore
+
 # from daart_utils.reports import ReportGenerator
 from daart_utils.streamlit_utils import update_single_file, update_file_list
-
 
 # @st.cache(allow_output_mutation=True)
 # def update_video_file(curr_file, new_file_list):
@@ -50,15 +53,6 @@ from daart_utils.streamlit_utils import update_single_file, update_file_list
 
 def increase_submits(n_submits=0):
     return n_submits + 1
-
-
-def increase_dirs(n_dirs=0):
-    return n_dirs + 1
-
-
-@st.cache
-def update_directory(model_dir):
-    return model_dir
 
 
 st.session_state['n_submits'] = 0
@@ -122,42 +116,32 @@ def run():
 
     st.title('Segmentation Diagnostics')
 
-    st.sidebar.header('Data Settings')
-
-    # # advance_dir = st.button('List next directories')
-    #
-    # if 'model_dir' not in st.session_state:
-    #     st.session_state['model_dir'] = '/'
-    #
-    # def directory_selector(base_dir='/'):
-    #     dirs = [os.path.join(base_dir, a) for a in os.listdir(base_dir)
-    #             if os.path.isdir(os.path.join(base_dir, a))]
-    #     selected_directory = st.selectbox('Select a directory', dirs)
-    #     return selected_directory
-    #
-    # print(st.session_state['model_dir'])
-    # model_dir = directory_selector(st.session_state['model_dir'])
-    # print(model_dir)
-    #
-    # if st.session_state['model_dir'] != model_dir:
-    #     st.session_state['model_dir'] = model_dir
-
-    # if 'model_dir' in st.session_state:
-    # st.write('Currently selected directory: `%s`' % st.session_state['model_dir'])
-
+    # select model
     model_dir = st_directory_picker()
-    # st.write('Currently selected directory: `%s`' % model_dir)
-
     if 'best_val_model.pt' not in os.listdir(model_dir):
         st.warning('Current directory does not contain a daart model')
         load_model = False
     else:
         load_model = True
+    load_model_submit = st.button('Load model', disabled=not load_model)
 
-    model_loaded = st.button('Load model', disabled=not load_model)
+    if load_model_submit:
 
-    # hparams_file = TODO
+        model_file = os.path.join(model_dir, 'best_val_model.pt')
 
+        hparams_file = os.path.join(model_dir, 'hparams.yaml')
+        hparams = yaml.safe_load(open(hparams_file, 'rb'))
+        hparams['device'] = 'cpu'
+
+        model = Segmenter(hparams)
+        model.load_state_dict(torch.load(model_file, map_location=lambda storage, loc: storage))
+        model.to(hparams['device'])
+        model.eval()
+
+        state_names = hparams['class_names']
+
+    # select feature files to process
+    st.sidebar.header('Data Settings')
     uploaded_files_: list = st.sidebar.file_uploader(
         'Choose one or more feature CSV files', accept_multiple_files=True, type='csv',
     )
@@ -169,27 +153,10 @@ def run():
         # ---------------------------------------------------
         # load data
         # ---------------------------------------------------
-        st.text(model_file.name)
-
+        data_gens = {}
         for u, uploaded_file in enumerate(uploaded_files):
-            print(uploaded_file.name)
-        #     if using_cli_preds and len(args.model_names) > 0:
-        #         # use provided names from cli if applicable
-        #         filename = args.model_names[u]
-        #     elif uploaded_file.name in dframes.keys():
-        #         # append new integer to duplicate filenames
-        #         idx = 0
-        #         new_name = "%s_0" % uploaded_file.name
-        #         while new_name in dframes.keys():
-        #             idx += 1
-        #             new_name = "%s_%i" % (uploaded_file.name, idx)
-        #         filename = new_name
-        #     else:
-        #         filename = uploaded_file.name
-        #     dframes[filename] = pd.read_csv(uploaded_file, header=[1, 2], index_col=0)
-        #     if not isinstance(uploaded_file, Path):
-        #         uploaded_file.seek(0)  # reset buffer after reading
-        #
+            features[uploaded_file.name] = pd.read_csv(uploaded_file, header=[1, 2], index_col=0)
+
         # # edit model names if desired, to simplify plotting
         # st.sidebar.write("Model display names (editable)")
         # new_names = []
@@ -372,6 +339,7 @@ def run():
 
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--feature_files', action='append', default=[])

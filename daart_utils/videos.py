@@ -51,7 +51,7 @@ def get_frames_from_idxs(cap, idxs):
 
 def make_labeled_video(
         save_file, frames, frame_idxs=None, markers=None, probs=None, state_names=None,
-        framerate=20, height=4):
+        framerate=20, height=4, **kwargs):
     """Behavioral video overlaid with markers and discrete labels.
 
     Parameters
@@ -137,7 +137,7 @@ def make_labeled_video(
 def make_syllable_video(
         save_file, labels, video_obj, markers=None, markersize=8, min_threshold=5, n_buffer=5,
         n_pre_frames=3, max_frames=1000, single_label=None, label_mapping=None, probs=None,
-        framerate=20):
+        framerate=20, **kwargs):
     """Composite video shows many clips belonging to same behavioral class, one panel per class.
 
     Adapted from:

@@ -247,7 +247,7 @@ def compute_transition_matrix(states, n_states=None):
 
 
 def plot_behavior_distribution(
-        states, state_names=None, framerate=None, title=None, save_file=None):
+        states, state_names=None, framerate=None, title=None, save_file=None, **kwargs):
     """Plot a single bar plot of total behavior durations.
 
     Parameters
@@ -361,7 +361,7 @@ def get_state_colors(n_colors=6):
 
 def plot_markers_and_states(
         times, markers, states, title, ax, cmap, ymin=None, ymax=None, spc=None,
-        marker_names=None):
+        marker_names=None, **kwargs):
     """Plot markers or features with background color denoting discrete state.
 
     Parameters
@@ -419,6 +419,7 @@ def plot_markers_and_states(
 def plot_bout_onsets_w_features(
         bouts, markers, marker_names, probs, states, state_names,
         frame_win=200, framerate=1, max_n_ex=10, min_bout_len=5, title=None, save_file=None,
+        **kwargs
 ):
     """Plot array of behavior bout examples aligned to bout onset; each example is markers+states.
 

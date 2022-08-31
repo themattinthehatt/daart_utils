@@ -520,19 +520,25 @@ def generate_training_report(
 
     os.makedirs(save_dir, exist_ok=True)
 
+    # save out metrics df as a csv
+    save_file = os.path.join(save_dir, 'model_metrics.csv')
+    metrics_df.to_csv(save_file)
+
     # ------------------------------------------------
     # plots
     # ------------------------------------------------
 
     # training curves on train data
+    save_file = os.path.join(save_dir, 'train_curves')
     plot_training_curves(
-        train_metrics_file, dtype='train', expt_ids=train_sess_ids,
-        save_file=os.path.join(save_dir, 'train_curves'), format=format)
+        train_metrics_file, dtype='train', expt_ids=train_sess_ids, save_file=save_file,
+        format=format)
 
     # training curves on validation data
+    save_file = os.path.join(save_dir, 'val_curves')
     plot_training_curves(
-        train_metrics_file, dtype='val', expt_ids=train_sess_ids,
-        save_file=os.path.join(save_dir, 'val_curves'), format=format)
+        train_metrics_file, dtype='val', expt_ids=train_sess_ids, save_file=save_file,
+        format=format)
 
     # scatterplot of hand vs model rates
     save_file = os.path.join(save_dir, 'behavior_rate_scatters.%s' % format)

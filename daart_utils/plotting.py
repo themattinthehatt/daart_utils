@@ -336,7 +336,7 @@ def plot_behavior_distribution(
     if save_file:
         plt.savefig(save_file)
 
-    plt.show()
+    # plt.show()
 
 
 def plot_rate_scatters(df, state_names, title=None, save_file=None, **kwargs):
@@ -386,7 +386,7 @@ def plot_rate_scatters(df, state_names, title=None, save_file=None, **kwargs):
     if save_file:
         plt.savefig(save_file)
 
-    plt.show()
+    # plt.show()
 
 
 def get_state_colors(n_colors=6):
@@ -522,7 +522,13 @@ def plot_bout_onsets_w_features(
     ymin = min(-spc - 0.5, np.percentile(plotting_markers, 2))
     ymax = max(spc * n_markers, np.percentile(plotting_markers, 98))
 
-    n_ex = min(bouts.shape[0], max_n_ex)
+    # get rid of bouts that fall outside of our window
+    bouts_clean = bouts[(bouts[:, 1] > frame_win) & (bouts[:, 2] < (states.shape[0] - frame_win))]
+    # get rid of short bouts
+    bout_lens = bouts_clean[:, 2] - bouts_clean[:, 1]
+    bouts_clean = bouts_clean[bout_lens >= min_bout_len]
+
+    n_ex = min(bouts_clean.shape[0], max_n_ex)
     n_cols = 2
     n_rows = int(np.ceil(n_ex / n_cols))
 
@@ -530,16 +536,20 @@ def plot_bout_onsets_w_features(
     xticklabels = np.array([-n_secs, -n_secs / 2, 0, n_secs / 2, n_secs])
     xticks = xticklabels * framerate + frame_win
 
+    if n_ex < 2:
+        print('Did not find enough behavioral bouts for plotting')
+        return
+
     if n_ex < 6:
         offset = 1
     else:
         offset = 0
     fig_width = 8
-    fig_height = 2.5 * n_ex // 2 + offset
+    fig_height = 2.5 * np.ceil(n_ex / 2) + offset
     plt.cla()
     plt.clf()
     fig = plt.figure(figsize=(fig_width, fig_height), constrained_layout=True)
-    outer_grid = fig.add_gridspec(n_ex // 2, 2, hspace=0.2)
+    outer_grid = fig.add_gridspec(int(np.ceil(n_ex / 2)), 2, hspace=0.2)
     if states_hand is not None:
         inner_grid = [
             outer_grid[r].subgridspec(4, 1, hspace=0, height_ratios=[0.5, 0.1, 2, 1])
@@ -548,11 +558,6 @@ def plot_bout_onsets_w_features(
         inner_grid = [
             outer_grid[r].subgridspec(2, 1, hspace=0, height_ratios=[2, 1]) for r in range(n_ex)]
 
-    # get rid of bouts that fall outside of our window
-    bouts_clean = bouts[bouts[:, 1] > frame_win]
-    # get rid of short bouts
-    bout_lens = bouts_clean[:, 2] - bouts_clean[:, 1]
-    bouts_clean = bouts_clean[bout_lens >= min_bout_len]
     bout_ex_idxs = np.sort(np.random.permutation(bouts_clean.shape[0])[:n_ex])
 
     for ex in range(n_ex):
@@ -649,4 +654,4 @@ def plot_bout_onsets_w_features(
     if save_file is not None:
         plt.savefig(save_file)
 
-    plt.show()
+    # plt.show()

@@ -4,6 +4,9 @@ import copy
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import scipy
 import seaborn as sns
 
@@ -662,3 +665,141 @@ def plot_bout_onsets_w_features(
         plt.savefig(save_file)
 
     # plt.show()
+
+
+def plotly_markers_and_states(
+        x,
+        states_hand,
+        states_model,
+        states_probs,
+        state_names,
+        features,
+        include_feature,
+        add_vertical_line=None,
+):
+
+    n_features = len([f for f, v in include_feature.items() if v])
+
+    n_rows = 3
+    row_heights = [0.3, 0.5, max(2.0, 0.25 * n_features)]
+    if states_hand is not None:
+        n_rows += 1
+        row_heights.insert(0, 0.3)
+
+    fig_traces = make_subplots(
+        rows=len(row_heights), cols=1,
+        shared_xaxes=True,
+        x_title='Frame Index',
+        row_heights=row_heights,
+        vertical_spacing=0.03,
+    )
+
+    yaxis_labels = {}
+    row = 1
+    colors = px.colors.qualitative.Plotly
+
+    # plot hand labels
+    if states_hand is not None:
+        for s, state_name in enumerate(state_names):
+            fig_traces.add_trace(
+                go.Scatter(
+                    name=state_name,
+                    x=x,
+                    y=states_hand[:, s],
+                    mode='lines',
+                    line=dict(color=colors[s], width=20),
+                    showlegend=False,
+                ),
+                row=row, col=1,
+            )
+        fig_traces['layout']['yaxis%i' % row]['range'] = [0.999, 1.001]
+        fig_traces['layout']['yaxis%i' % row]['tickvals'] = []
+        fig_traces['layout']['yaxis%i' % row]['ticktext'] = []
+        yaxis_labels['yaxis%i' % row] = 'Hand<br>states'
+        row += 1
+
+    # plot most likely states
+    for s, state_name in enumerate(state_names):
+        fig_traces.add_trace(
+            go.Scatter(
+                name=state_name,
+                x=x,
+                y=states_model[:, s],
+                mode='lines',
+                line=dict(color=colors[s], width=20),
+                showlegend=False,
+            ),
+            row=row, col=1
+        )
+    fig_traces['layout']['yaxis%i' % row]['range'] = [0.999, 1.001]
+    fig_traces['layout']['yaxis%i' % row]['tickvals'] = []
+    fig_traces['layout']['yaxis%i' % row]['ticktext'] = []
+    yaxis_labels['yaxis%i' % row] = 'Model<br>states'
+    row += 1
+
+    # plot probabilities
+    for s, state_name in enumerate(state_names):
+        fig_traces.add_trace(
+            go.Scatter(
+                name=state_name,
+                x=x,
+                y=states_probs[:, s],
+                mode='lines',
+                line=dict(color=colors[s]),
+                showlegend=True,
+                legendgroup=str(row),
+            ),
+            row=row, col=1
+        )
+    yaxis_labels['yaxis%i' % row] = 'Model<br>probs'
+    row += 1
+
+    # plot traces
+    counter = 0
+    spc = 4
+    for i, (name, display) in enumerate(include_feature.items()):
+        if not display:
+            continue
+        fig_traces.add_trace(
+            go.Scatter(
+                name=name,
+                x=x,
+                y=features[:, i] + spc * counter,
+                mode='lines',
+                showlegend=True,
+                legendgroup=str(row),
+            ),
+            row=row, col=1
+        )
+        counter += 1
+    fig_traces['layout']['yaxis%i' % row]['tickvals'] = []
+    fig_traces['layout']['yaxis%i' % row]['ticktext'] = []
+    yaxis_labels['yaxis%i' % row] = 'Features'
+    row += 1
+
+    # add vertical line
+    if add_vertical_line:
+        fig_traces.add_shape(
+            go.layout.Shape(
+                type='line',
+                yref='paper',
+                xref='x',
+                x0=add_vertical_line,
+                y0=0,
+                x1=add_vertical_line,
+                y1=1.5,
+                line=dict(color='black')
+            ),
+            # row=row, col=1,  # no rows or cols means it plots across all subplots
+        )
+
+    # cleanup
+    for k, v in yaxis_labels.items():
+        fig_traces['layout'][k]['title'] = v
+    fig_traces.update_layout(
+        width=800, height=np.sum(row_heights) * 125,
+        margin=dict(l=0, r=0, t=0, b=50),
+        legend_tracegroupgap=100,
+    )
+
+    return fig_traces

@@ -26,26 +26,34 @@ Notes:
 
 import argparse
 import cv2
+import numpy as np
 import os
 import pandas as pd
 from pathlib import Path
 import streamlit as st
 import yaml
 
-from daart.data import load_feature_csv, DataGenerator
-from daart.models import Segmenter
-from daart.transforms import ZScore
+# import plotly.express as px
+# import plotly.graph_objects as go
+# from plotly.subplots import make_subplots
 
+from daart.transforms import MakeOneHot
+
+from daart_utils.data import DataHandler
+from daart_utils.plotting import plotly_markers_and_states
+from daart_utils.reports import ReportGenerator
 from daart_utils.streamlit_utils import update_single_file, update_file_list
 
-
-def increase_submits(n_submits=0):
-    return n_submits + 1
-
-
-st.session_state['n_submits'] = 0
-
-# scale_options = ["linear", "log"]
+if 'handler' not in st.session_state:
+    st.session_state.handler = None
+if 'fig_traces' not in st.session_state:
+    st.session_state.fig_traces = None
+if 'idx' not in st.session_state:
+    st.session_state.idx = 0
+if 'window' not in st.session_state:
+    st.session_state.window = int(200)
+if 'frame_skip' not in st.session_state:
+    st.session_state.frame_skip = int(1)
 
 
 def st_directory_picker(initial_path=Path()):
@@ -53,8 +61,6 @@ def st_directory_picker(initial_path=Path()):
     adapted from
     https://github.com/aidanjungo/StreamlitDirectoryPicker/blob/main/directorypicker.py
     """
-
-    st.markdown("#### Choose model directory")
 
     if "path" not in st.session_state:
         st.session_state.path = initial_path.absolute()
@@ -98,238 +104,258 @@ def st_directory_picker(initial_path=Path()):
     return st.session_state.path
 
 
+def zscore(array):
+    array_centered = array - np.mean(array, axis=0)
+    array_z = array_centered / np.std(array_centered, axis=0)
+    return array_z
+
+
+def bound_value(val, min_val, max_val):
+    return max(min(val, max_val), min_val)
+
+
+@st.cache
+def get_sess_ids(sess_dir):
+    sess_ids = ReportGenerator.find_session_ids(sess_dir)
+    sess_ids.sort()
+    return sess_ids
+
+
+@st.cache(hash_funcs={DataHandler: lambda _: None})
+def load_data(sess_id, data_dir, trace_dir):
+    # init data handler for easy data loading/manipulation
+    handler = DataHandler(session_id=sess_id, base_path=data_dir)
+    # load traces, minimum required data
+    handler.load_features(dirname=trace_dir)
+    handler.features.vals = zscore(handler.features.vals)
+    # load model labels
+    handler.load_model_labels(logits=True)
+    # load hand labels
+    if os.path.exists(os.path.join(data_dir, 'labels-hand')):
+        handler.load_hand_labels()
+    # load video
+    if os.path.exists(os.path.join(data_dir, 'videos')):
+        handler.load_video()
+    return handler
+
+
 def run():
 
-    args = parser.parse_args()
+    # args = parser.parse_args()
 
     st.title('Segmentation Diagnostics')
 
-    # select model
-    model_dir = st_directory_picker()
-    if 'best_val_model.pt' not in os.listdir(model_dir):
-        st.warning('Current directory does not contain a daart model')
-        load_model = False
+    # ---------------------------------------------------------------------------------------------
+    # load data
+    # ---------------------------------------------------------------------------------------------
+    st.markdown('#### Select data directory')
+
+    with st.expander('Expand for data directory formatting info'):
+
+        st.markdown("""
+            The data directory should contain a set of subdirectories for different data types
+            (markers, states, videos, etc.).
+            The required format is the following (with data from two example sessions):
+
+            ```
+            data_directory
+            ├── features
+            │   ├── <sess_id_0>_labeled.csv
+            │   └── <sess_id_1>_labeled.csv
+            ├── labels-hand
+            │   ├── <sess_id_0>_labels.csv
+            │   └── <sess_id_1>_labels.csv
+            ├── labels-model
+            │   ├── <sess_id_0>_states.csv
+            │   └── <sess_id_1>_states.csv
+            └── videos
+                ├── <sess_id_0>.mp4
+                └── <sess_id_1>.mp4
+            ```
+
+            * `features` contains traces used to fit the models; these could be raw markers or some
+            other type of feature; you will be able to specify the name of this directory below
+            * `labels-hand` is optional and contains the ground truth hand labels; if this
+            directory is present these data will be plotted along with model predictions
+            * `labels-model` contains the state probabilities for each frame
+            * `videos` is optional and contains mp4 files for each session that can be plotted
+            along with traces and predicted states
+
+        """)
+
+    # trace_dir = st.text_input(
+    #     'Directory name for traces (e.g. `markers` or `features`)',
+    #     value='features')
+    # data_dir = st_directory_picker()
+
+    trace_dir = 'features-aug'
+    data_dir = '/media/mattw/behavior/daart-data/fish/tmp'
+
+    available_dirs = [d for d in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, d))]
+    if trace_dir not in available_dirs:
+        sess_ids = []
+        st.warning('Current directory does not contain the correct subdirectories')
     else:
-        load_model = True
-    load_model_submit = st.button('Load model', disabled=not load_model)
+        sess_ids = get_sess_ids(os.path.join(data_dir, trace_dir))
 
-    if load_model_submit:
+    if len(sess_ids) > 0:
 
-        model_file = os.path.join(model_dir, 'best_val_model.pt')
+        sess_id = st.selectbox('Select a session to load', sess_ids)
 
-        hparams_file = os.path.join(model_dir, 'hparams.yaml')
-        hparams = yaml.safe_load(open(hparams_file, 'rb'))
-        hparams['device'] = 'cpu'
+        load_data_submit = st.button('Load data')
+        if load_data_submit:
+            print('load data')
+            st.session_state.handler = load_data(sess_id, data_dir, trace_dir)
 
-        model = Segmenter(hparams)
-        model.load_state_dict(torch.load(model_file, map_location=lambda storage, loc: storage))
-        model.to(hparams['device'])
-        model.eval()
+    # ---------------------------------------------------------------------------------------------
+    # plot options
+    # ---------------------------------------------------------------------------------------------
+    if st.session_state.handler is not None:
 
-        state_names = hparams['class_names']
+        st.text('')
+        st.text('')
+        st.markdown('#### User options')
 
-    # select feature files to process
-    st.sidebar.header('Data Settings')
-    uploaded_files_: list = st.sidebar.file_uploader(
-        'Choose one or more feature CSV files', accept_multiple_files=True, type='csv',
-    )
-    # check to see if a prediction files were provided externally via cli arg
-    uploaded_files, using_cli_preds = update_file_list(uploaded_files_, args.feature_files)
+        # select which features to plot
+        st.markdown('###### Plotting options')
+        with st.form('plot_options'):
 
-    if len(uploaded_files) > 0:  # otherwise don't try to proceed
+            with st.expander('Select features to plot'):
+                include_feature = {f: True for f in st.session_state.handler.features.names}
 
-        # ---------------------------------------------------
-        # load data
-        # ---------------------------------------------------
-        data_gens = {}
-        for u, uploaded_file in enumerate(uploaded_files):
-            features[uploaded_file.name] = pd.read_csv(uploaded_file, header=[1, 2], index_col=0)
+                for f in st.session_state.handler.features.names:
+                    include_feature[f] = st.checkbox(f, value=include_feature[f])
 
-        # # edit model names if desired, to simplify plotting
-        # st.sidebar.write("Model display names (editable)")
-        # new_names = []
-        # og_names = list(dframes.keys())
-        # for name in og_names:
-        #     new_name = st.sidebar.text_input(label="", value=name)
-        #     new_names.append(new_name)
-        #
-        # # change dframes key names to new ones
-        # for n_name, o_name in zip(new_names, og_names):
-        #     dframes[n_name] = dframes.pop(o_name)
-        #
-        # # upload config file
-        # uploaded_cfg_: str = st.sidebar.file_uploader(
-        #     "Select data config yaml (optional, for pca losses)", accept_multiple_files=False,
-        #     type=["yaml", "yml"],
-        # )
-        # uploaded_cfg = update_single_file(uploaded_cfg_, args.data_cfg)
-        # if uploaded_cfg is not None:
-        #     if isinstance(uploaded_cfg, Path):
-        #         cfg = DictConfig(yaml.safe_load(open(uploaded_cfg)))
-        #     else:
-        #         cfg = DictConfig(yaml.safe_load(uploaded_cfg))
-        #         uploaded_cfg.seek(0)  # reset buffer after reading
-        # else:
-        #     cfg = None
-        #
-        # # upload video file
-        # # video_file_: str = st.sidebar.file_uploader(
-        # #     "Choose video file corresponding to predictions (optional, for labeled video)",
-        # #     accept_multiple_files=False,
-        # #     type="mp4",
-        # # )
-        # # TODO: cannot currently upload video from file explorer, doesn't return filepath
-        # # opencv VideoCapture cannot read a relative path or a BytesIO object
-        # video_file_ = None
-        # # check to see if a video file was provided externally via cli arg
-        # video_file = update_video_file(video_file_, args.video_file)
-        # if isinstance(video_file, Path):
-        #     video_file = str(video_file)
-        #
-        # # ---------------------------------------------------
-        # # compute metrics
-        # # ---------------------------------------------------
-        #
-        # # concat dataframes, collapsing hierarchy and making df fatter.
-        # df_concat, keypoint_names = concat_dfs(dframes)
-        # df_metrics = build_metrics_df(
-        #     dframes=dframes, keypoint_names=keypoint_names, is_video=True, cfg=cfg)
-        # metric_options = list(df_metrics.keys())
-        #
-        # # ---------------------------------------------------
-        # # plot diagnostics
-        # # ---------------------------------------------------
-        #
-        # # choose which metric to plot
-        # metric_to_plot = st.selectbox("Select a metric:", metric_options, key="metric")
-        #
-        # x_label = "Model Name"
-        # y_label = get_y_label(metric_to_plot)
-        #
-        # # plot diagnostic averaged overall all keypoints
-        # plot_type = st.selectbox("Select a plot type:", catplot_options, key="plot_type")
-        # plot_scale = st.radio("Select y-axis scale", scale_options, key="plot_scale")
-        # log_y = False if plot_scale == "linear" else True
-        # fig_cat = make_seaborn_catplot(
-        #     x="model_name", y="mean", data=df_metrics[metric_to_plot], log_y=log_y,
-        #     x_label=x_label,
-        #     y_label=y_label, title="Average over all keypoints", plot_type=plot_type)
-        # st.pyplot(fig_cat)
-        #
-        # # select keypoint to plot
-        # keypoint_to_plot = st.selectbox(
-        #     "Select a keypoint:", pd.Series([*keypoint_names, "mean"]), key="keypoint_to_plot",
-        # )
-        # # show boxplot per keypoint
-        # fig_box = make_plotly_catplot(
-        #     x="model_name", y=keypoint_to_plot, data=df_metrics[metric_to_plot], x_label=x_label,
-        #     y_label=y_label, title=keypoint_to_plot, plot_type="box")
-        # st.plotly_chart(fig_box)
-        # # show histogram per keypoint
-        # fig_hist = make_plotly_catplot(
-        #     x=keypoint_to_plot, y=None, data=df_metrics[metric_to_plot], x_label=y_label,
-        #     y_label="Frame count", title=keypoint_to_plot, plot_type="hist"
-        # )
-        # st.plotly_chart(fig_hist)
-        #
-        # # ---------------------------------------------------
-        # # plot traces
-        # # ---------------------------------------------------
-        # st.header("Trace diagnostics")
-        #
-        # models = st.multiselect(
-        #     "Select models:", pd.Series(list(dframes.keys())), default=list(dframes.keys())
-        # )
-        # keypoint = st.selectbox("Select a keypoint:", pd.Series(keypoint_names))
-        # cols = get_col_names(keypoint, "x", models)
-        # fig_traces = plot_traces(df_metrics, df_concat, cols)
-        # st.plotly_chart(fig_traces)
-        #
-        # # ---------------------------------------------------
-        # # generate report
-        # # ---------------------------------------------------
-        # st.subheader("Generate diagnostic report")
-        #
-        # # select save directory
-        # st.text("current directory: %s" % os.getcwd())
-        # save_dir_ = st.text_input("Enter path of directory in which to save report")
-        # save_dir = ReportGenerator.generate_save_dir(base_save_dir=save_dir_, is_video=True)
-        #
-        # rpt_save_format = st.selectbox("Select figure format", ["pdf", "png"])
-        #
-        # rpt_n_frames = 500
-        # rpt_likelihood = 0.05
-        # rpt_framerate = 20
-        # rpt_single_vids = False
-        # if video_file is not None:
-        #     rpt_n_frames = st.text_input("Number of frames in labeled video (<1000)", rpt_n_frames)
-        #     rpt_likelihood = st.text_input("Likelihood threshold", rpt_likelihood)
-        #     rpt_framerate = st.text_input("Labeled video framerate", rpt_framerate)
-        #     rpt_single_vids = st.checkbox(
-        #         "Output video for each individual bodypart", rpt_single_vids)
-        #
-        # st.markdown("""
-        #     Click the `Generate Report` button below to automatically save out all plots.
-        #     Each available metric will be plotted. Options plot type and y-axis scale
-        #     will be the same as those selected above. For each metric there will be one
-        #     overview plot that shows metrics for each individual keypoint, as well as another plot
-        #     that shows the metric averaged across all keypoints.
-        #
-        #     **Note**: pca metrics will be computed and plotted when you upload a config yaml in the
-        #     left panel
-        # """)
-        # # * a labeled video will be created (using the same models whose traces are plotted
-        # # above) when you upload the video file in the left panel
-        #
-        # rpt_boxplot_type = plot_type
-        # rpt_boxplot_scale = plot_scale
-        # rpt_trace_models = models
-        #
-        # # enumerate save options
-        # savefig_kwargs = {}
-        #
-        # disable_button = True if save_dir_ is None or save_dir_ == "" else False
-        # submit_report = st.button("Generate report", disabled=disable_button)
-        # if submit_report:
-        #     st.warning("Generating report")
-        #     if "n_submits" not in st.session_state:
-        #         st.session_state["n_submits"] = 0
-        #     else:
-        #         st.session_state["n_submits"] = increase_submits(st.session_state["n_submits"])
-        #     generate_report_video(
-        #         df_traces=df_concat,
-        #         df_metrics=df_metrics,
-        #         keypoint_names=keypoint_names,
-        #         save_dir=save_dir,
-        #         format=rpt_save_format,
-        #         box_kwargs={
-        #             "plot_type": rpt_boxplot_type,
-        #             "plot_scale": rpt_boxplot_scale,
-        #         },
-        #         trace_kwargs={
-        #             "model_names": rpt_trace_models,
-        #         },
-        #         savefig_kwargs=savefig_kwargs,
-        #         video_kwargs={
-        #             "likelihood_thresh": float(rpt_likelihood),
-        #             "max_frames": int(rpt_n_frames),
-        #             "framerate": float(rpt_framerate),
-        #         },
-        #         video_file=video_file,
-        #         make_video_per_keypoint=rpt_single_vids,
-        #     )
-        #
-        # if st.session_state["n_submits"] > 0:
-        #     msg = "Report directory located at<br>%s" % save_dir
-        #     st.markdown(
-        #         "<p style='font-family:sans-serif; color:Green;'>%s</p>" % msg,
-        #         unsafe_allow_html=True)
+            window_ = st.text_input('Plot width (frames)', st.session_state.window)
+            window_ = int(window_)
+            if st.session_state.window != window_:
+                st.session_state.window = window_
+
+            st.form_submit_button('Update plot')
+
+        # select video options
+        if st.session_state.handler.video is not None:
+            st.markdown('###### Video options')
+
+            include_video = st.checkbox('Include video data')
+
+            if include_video:
+                skip_ = st.text_input('Arrow skip (frames)', st.session_state.frame_skip)
+                skip_ = int(skip_)
+                if st.session_state.frame_skip != skip_:
+                    st.session_state.frame_skip = skip_
+
+        else:
+            include_video = False
+
+    if st.session_state.handler is not None:
+        st.text('')
+        st.text('')
+        st.markdown('#### Data UI')
+
+    # ---------------------------------------------------------------------------------------------
+    # plot frames
+    # ---------------------------------------------------------------------------------------------
+    if st.session_state.handler is not None and include_video:
+
+        min_frames = 0
+        max_frames = int(st.session_state.handler.video.n_frames - 1)
+
+        # select frame index
+        col1, col2, col3 = st.columns([1, 8, 1])
+        with col1:
+            st.markdown('#')
+            if st.button('️⬅️'):
+                st.session_state.idx -= st.session_state.frame_skip
+                st.experimental_rerun()  # update all input elements
+        with col2:
+            idx_ = st.slider(
+                'Select frame index',
+                min_value=min_frames, max_value=max_frames,
+                value=st.session_state.idx
+            )
+            if st.session_state.idx != int(idx_):
+                st.session_state.idx = int(idx_)
+                st.experimental_rerun()  # update all input elements
+        with col3:
+            st.markdown('#')
+            if st.button('➡️'):
+                st.session_state.idx += st.session_state.frame_skip
+                st.experimental_rerun()  # update all input elements
+
+        # safeguard from accessing bad frames
+        st.session_state.idx = bound_value(st.session_state.idx, min_frames, max_frames)
+
+        # plot
+        st.session_state.handler.video.cap.set(1, st.session_state.idx)
+        ret, frame = st.session_state.handler.video.cap.read()
+        if not ret:
+            raise Exception
+
+        # st.columns is a hacky way to center the video frame
+        _, col0v, col1v, col2v, _ = st.columns([1, 1, 3, 1, 1])
+        with col0v:
+            st.write('')
+        with col1v:
+            st.image(frame, channels="BGR", width=300)
+        with col2v:
+            st.write('')
+
+    # ---------------------------------------------------------------------------------------------
+    # plot traces
+    # ---------------------------------------------------------------------------------------------
+    if st.session_state.handler is not None:
+
+        state_names = (st.session_state.handler.hand_labels.names
+                       or st.session_state.handler.model_labels.names)
+
+        # x-axis
+        if include_video:
+            x = np.arange(
+                int(st.session_state.idx - st.session_state.window),
+                int(st.session_state.idx + st.session_state.window),
+            )
+            add_vertical_line = st.session_state.idx
+        else:
+            x = np.arange(st.session_state.handler.model_labels.vals.shape[0])
+            add_vertical_line = None
+
+        # hand labels
+        if st.session_state.handler.hand_labels.vals is not None:
+            states_hand = st.session_state.handler.hand_labels.vals[x]
+            states_hand[states_hand != 1] = np.nan
+        else:
+            states_hand = None
+
+        # model outputs
+        states_ = np.argmax(st.session_state.handler.model_labels.vals[x], axis=1)
+        states = MakeOneHot(n_classes=len(state_names))(states_)
+        states[states != 1] = np.nan
+
+        fig_traces = plotly_markers_and_states(
+            x=x,
+            states_hand=states_hand,
+            states_model=states,
+            states_probs=st.session_state.handler.model_labels.vals[x],
+            state_names=state_names,
+            features=st.session_state.handler.features.vals[x],
+            include_feature=include_feature,
+            add_vertical_line=add_vertical_line,
+        )
+
+        st.session_state.fig_traces = fig_traces
+
+        if st.session_state.fig_traces is not None:
+            # st.session_state.fig_traces.update_xaxes(
+            #     spikemode='across', spikedash='solid', spikecolor='black', spikethickness=0.5)
+            # st.session_state.fig_traces.update_traces(xaxis='x%i' % st.session_state.n_rows)
+            st.plotly_chart(st.session_state.fig_traces)
 
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument('--feature_files', action='append', default=[])
+    # parser = argparse.ArgumentParser()
+    #
+    # parser.add_argument('--feature_files', action='append', default=[])
 
     run()

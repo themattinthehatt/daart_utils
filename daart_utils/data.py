@@ -200,15 +200,16 @@ class DataHandler(object):
             True if loaded values are raw logits; will be processed into one-hot vector
 
         """
-        extensions = ['csv', 'pkl', 'pickle']
+        extensions = ['csv', 'pkl', 'pickle', 'npy']
         if filepath is not None:
             pass
         elif self.base_path is not None:
-            for ext in extensions:
-                filepath = os.path.join(
-                    self.base_path, 'labels-model', '%s_labels.%s' % (self.session_id, ext))
-                if os.path.exists(filepath):
-                    break
+            for name in ['labels', 'states']:
+                for ext in extensions:
+                    filepath = os.path.join(
+                        self.base_path, 'labels-model', '%s_%s.%s' % (self.session_id, name, ext))
+                    if os.path.exists(filepath):
+                        break
         if filepath is None:
             raise FileNotFoundError(
                 'Must supply a filepath for labels with extension in {}'.format(extensions))
@@ -676,6 +677,9 @@ class Labels(object):
             labels, label_names = load_label_csv(filepath)
         elif file_ext == 'pkl' or file_ext == 'pickle':
             labels, label_names = load_label_pkl(filepath)
+        elif file_ext == 'npy':
+            labels = np.load(filepath)
+            label_names = ['class_%i' % i for i in range(labels.shape[1])]
         else:
             raise ValueError('"%s" is an invalid file extension' % file_ext)
 

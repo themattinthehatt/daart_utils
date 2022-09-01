@@ -10,22 +10,32 @@
 """
 
 import argparse
+
 from daart_utils.reports import ReportGenerator
 
 
 def run():
 
-    pass
+    args = parser.parse_args()
 
-    # args = parser.parse_args()
-    #
-    # reporter = ReportGenerator(
-    #
-    # )
-    # output_dir = reporter.generate_report(
-    #     save_dir=save_dir, format=format, video_kwargs={"max_frames": 100},
-    # )
-    # print('Diagnostics saved to %s' % output_dir)
+    reporter = ReportGenerator(model_dir=args.model_dir)
+    reporter.generate_report(
+        save_dir=args.save_dir,
+        features_dir=args.features_dir,
+        format=args.format,
+        bout_example_kwargs={
+            # 'features_to_plot': ['orientation', 'operculum', 'oper_angle_avg', 'oper_dist_avg'],
+            'frame_win': 200,
+            'max_n_ex': 10,
+            'min_bout_len': 5,
+        },
+        video_kwargs={
+            'max_frames': 500,
+            'framerate': 20,
+        },
+        video_framerate=float(args.framerate),
+        videos_dir=args.videos_dir,
+    )
 
 
 if __name__ == "__main__":

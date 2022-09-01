@@ -317,22 +317,23 @@ class DataHandler(object):
             markers = None
 
         if label_type == 'hand':
-            labels = {name: self.hand_labels.vals[idxs, l]
-                      for l, name in enumerate(self.hand_labels.names)}
+            labels = hand_labels.vals[idxs, :]
+            state_names = self.hand_labels.names
         elif label_type == 'heuristic':
-            labels = {name: self.heuristic_labels.vals[idxs, l]
-                      for l, name in enumerate(self.heuristic_labels.names)}
+            labels = self.heuristic_labels.vals[idxs, :]
+            state_names = self.heuristic_labels.names
         elif label_type == 'model':
-            labels = {name: self.model_labels.vals[idxs, l]
-                      for l, name in enumerate(self.model_labels.names)}
+            labels = self.model_labels.vals[idxs, :]
+            state_names = self.model_labels.names
         elif label_type == 'none' or label_type is None:
             labels = None
+            state_names = None
         else:
             raise NotImplementedError('must choose from "none", "hand", "heuristic", "model"')
 
         make_labeled_video(
-            save_file=save_file, frames=frames, markers=markers, labels=labels,
-            framerate=framerate, height=height)
+            save_file=save_file, frames=frames, frame_idxs=idxs, markers=markers, probs=labels,
+            state_names=state_names, framerate=framerate, height=height)
 
     def make_syllable_video(
             self, save_file, label_type, include_markers=False, likelihood_threshold=None,

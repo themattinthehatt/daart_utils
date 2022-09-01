@@ -3,7 +3,7 @@ import os
 import pandas as pd
 from scipy.signal import medfilt
 import torch
-from typing import Optional
+from typing import Optional, Union
 import yaml
 
 from daart.data import load_feature_csv, DataGenerator
@@ -146,7 +146,7 @@ class ReportGenerator(ReportGeneratorBase):
     @staticmethod
     def find_session_ids(features_dir):
         features_files = os.listdir(features_dir)
-        sess_ids = [os.path.basename(f).split('_labeled')[0] for f in features_files]
+        sess_ids = [f.split('_labeled')[0] for f in features_files if f[0] != '.']
         return sess_ids
 
     def generate_report(
@@ -156,7 +156,7 @@ class ReportGenerator(ReportGeneratorBase):
             format: str = 'pdf',
             bout_example_kwargs: dict = {},
             video_kwargs: dict = {},
-            video_framerate: Optional[int] = None,
+            video_framerate: Optional[Union[float, int]] = None,
             videos_dir: Optional[dir] = None,
             **kwargs
     ) -> str:
@@ -404,7 +404,7 @@ class ReportGeneratorTraining(ReportGeneratorBase):
             data_dir: str,
             input_type: str,
             behaviors_to_keep: Optional[list] = None,
-            video_framerate: Optional[int] = None,
+            video_framerate: Optional[Union[float, int]] = None,
             format: str = 'pdf',
             bout_example_kwargs: dict = {},
             **kwargs

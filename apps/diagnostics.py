@@ -36,19 +36,7 @@ from daart.data import load_feature_csv, DataGenerator
 from daart.models import Segmenter
 from daart.transforms import ZScore
 
-# from daart_utils.reports import ReportGenerator
 from daart_utils.streamlit_utils import update_single_file, update_file_list
-
-# @st.cache(allow_output_mutation=True)
-# def update_video_file(curr_file, new_file_list):
-#     """Cannot use `update_single_file` for both or there will be cache collisons."""
-#     if curr_file is None and len(new_file_list) > 0:
-#         # pull file from cli args; wrap in Path so that it looks like an UploadedFile object
-#         # returned by streamlit's file_uploader
-#         ret_file = Path(new_file_list[0])
-#     else:
-#         ret_file = curr_file
-#     return ret_file
 
 
 def increase_submits(n_submits=0):

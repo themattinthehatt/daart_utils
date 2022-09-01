@@ -220,7 +220,7 @@ def plot_bout_histograms(
     if save_file:
         plt.savefig(save_file)
 
-    plt.show()
+    # plt.show()
 
 
 def compute_transition_matrix(states, n_states=None):
@@ -469,7 +469,7 @@ def plot_markers_and_states(
 
 def plot_bout_onsets_w_features(
         bouts, markers, marker_names, probs, states, state_names, states_hand=None,
-        frame_win=200, framerate=1, max_n_ex=10, min_bout_len=5, title=None, save_file=None,
+        frame_win=200, framerate=None, max_n_ex=10, min_bout_len=5, title=None, save_file=None,
         **kwargs
 ):
     """Plot array of behavior bout examples aligned to bout onset; each example is markers+states.
@@ -512,6 +512,14 @@ def plot_bout_onsets_w_features(
     sns.set_context('paper')
     sns.set_style('white')
 
+    if framerate is None:
+        framerate = 1
+        xlabel = 'Time (frames)'
+        xticklabel_str = '%i'
+    else:
+        xlabel = 'Time (sec)'
+        xticklabel_str = '%5.1f'
+
     n_colors = len(state_names)
     cmap = get_state_colors(n_colors=n_colors)
 
@@ -548,7 +556,7 @@ def plot_bout_onsets_w_features(
     fig_height = 2.5 * np.ceil(n_ex / 2) + offset
     plt.cla()
     plt.clf()
-    fig = plt.figure(figsize=(fig_width, fig_height), constrained_layout=True)
+    fig = plt.figure(figsize=(fig_width, fig_height))
     outer_grid = fig.add_gridspec(int(np.ceil(n_ex / 2)), 2, hspace=0.2)
     if states_hand is not None:
         inner_grid = [
@@ -610,16 +618,15 @@ def plot_bout_onsets_w_features(
         axes[a].axvline(frame_win, color='k')
         xticklabels_ = xticklabels + idx_align / framerate
         axes[a].set_xticks(xticks)
-        axes[a].set_xticklabels(['%5.1f' % x for x in xticklabels_], fontsize=9)
+        axes[a].set_xticklabels([xticklabel_str % x for x in xticklabels_], fontsize=9)
         axes[a].tick_params(axis='x', which='major', pad=1)
         if col == 0:
             axes[a].set_yticks([0, 1])
             axes[a].set_yticklabels([0, 1], fontsize=10)
             axes[a].set_ylabel(
-                'probability', rotation='horizontal', ha='right', va='center',
-                fontsize=10)
+                'probability', rotation='horizontal', ha='right', va='center', fontsize=10)
         if row == (n_rows - 1):
-            axes[a].set_xlabel('Time (sec)', fontsize=14)
+            axes[a].set_xlabel(xlabel, fontsize=14)
 
     if n_rows < 3:
         top = 0.85

@@ -253,7 +253,7 @@ def run():
                 st.experimental_rerun()
 
             if st.session_state.include_video:
-                skip_ = st.text_input('Arrow skip (frames)', st.session_state.frame_skip)
+                skip_ = st.text_input('Double arrow skip (frames)', st.session_state.frame_skip)
                 skip_ = int(skip_)
                 if st.session_state.frame_skip != skip_:
                     st.session_state.frame_skip = skip_

@@ -51,7 +51,7 @@ def get_frames_from_idxs(cap, idxs):
 
 def make_labeled_video(
         save_file, frames, frame_idxs=None, markers=None, probs=None, state_names=None,
-        framerate=20, height=4, **kwargs):
+        framerate=20, height=4, include_all_probs=False, **kwargs):
     """Behavioral video overlaid with markers and discrete labels.
 
     Parameters
@@ -72,6 +72,8 @@ def make_labeled_video(
         framerate of video
     height : float, optional
         height of movie in inches
+    include_all_probs : bool, optional
+        display probability of each state on each frame
 
     """
 
@@ -121,18 +123,19 @@ def make_labeled_video(
                 ax.plot(marker_vals[n, 0], marker_vals[n, 1], 'o', markersize=8)
 
         # annotate with labels
-        if probs is not None and state_names is not None and frame_idxs is not None:
+        if probs is not None and state_names is not None:
             # show all labels and their probabilities on this frame
-            label_txt = ''
-            for s, state_name in enumerate(state_names):
-                label_txt += '%s: %1.2f' % (state_name, probs[frame_idxs[n], s])
-                if s != len(state_names) - 1:
-                    label_txt += '\n'
-            # plot label string
-            ax.text(0.02, 0.98, label_txt, **txt_prob_kwargs)
+            if include_all_probs:
+                label_txt = ''
+                for s, state_name in enumerate(state_names):
+                    label_txt += '%s: %1.2f' % (state_name, probs[n, s])
+                    if s != len(state_names) - 1:
+                        label_txt += '\n'
+                # plot label string
+                ax.text(0.02, 0.98, label_txt, **txt_prob_kwargs)
 
             # show highest probability label on this frame
-            idx_tmp = np.argmax(probs[frame_idxs[n]])
+            idx_tmp = np.argmax(probs[n])
             ax.text(0.98, 0.02, state_names[idx_tmp], **txt_state_kwargs)
 
         # add frame number

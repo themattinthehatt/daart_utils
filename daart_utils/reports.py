@@ -354,7 +354,7 @@ def generate_report(
         if not os.path.exists(os.path.dirname(save_file)):
             os.makedirs(os.path.dirname(save_file))
         make_labeled_video(
-            save_file, frames, frame_idxs=idxs, markers=None, probs=probs,
+            save_file, frames, frame_idxs=idxs, markers=None, probs=probs[idxs],
             state_names=state_names, height=4, **video_kwargs)
 
         # make syllable video

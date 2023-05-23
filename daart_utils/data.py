@@ -206,9 +206,10 @@ class DataHandler(object):
         elif self.base_path is not None:
             for name in ['labels', 'states']:
                 for ext in extensions:
-                    filepath = os.path.join(
+                    filepath_ = os.path.join(
                         self.base_path, 'labels-model', '%s_%s.%s' % (self.session_id, name, ext))
-                    if os.path.exists(filepath):
+                    if os.path.exists(filepath_):
+                        filepath = filepath_
                         break
         if filepath is None:
             raise FileNotFoundError(

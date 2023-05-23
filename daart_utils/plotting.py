@@ -189,7 +189,7 @@ def plot_bout_histograms(
     axes = axes.flatten()
     for a, ax in enumerate(axes):
         if a < len(bouts):
-            m = np.ceil(np.log10(np.max(bouts_[a])))
+            m = np.ceil(np.log10(np.nanmax(bouts_[a])))
             bins = 10 ** (np.arange(0, m, m / 20))
             ax.hist(
                 bouts_[a],
@@ -206,8 +206,10 @@ def plot_bout_histograms(
                 ax.set_ylabel('Count')
             if np.floor(a / n_cols) + 1 == n_rows:
                 ax.set_xlabel('Bout duration (%s)' % norm_type)
-            ax.set_title('%s (%i bouts)\nmin=%i, max=%i' %
-                         (state_names[a], len(bouts_[a]), np.min(bouts_[a]), np.max(bouts_[a])))
+            ax.set_title(
+                '%s (%i bouts)\nmin=%i, max=%i' %
+                (state_names[a], len(bouts_[a]), np.nanmin(bouts_[a]), np.nanmax(bouts_[a]))
+            )
         else:
             ax.set_axis_off()
 

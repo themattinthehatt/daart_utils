@@ -86,6 +86,12 @@ class ReportGeneratorBase:
             trial_splits=hparams['trial_splits'],
             sequence_pad=hparams['sequence_pad'], input_type=hparams['input_type'])
 
+        # drop features if necessary
+        if self.hparams.get('feature_columns_to_keep', None) is not None:
+            dataset = data_gen_test.datasets[0]
+            for b, batch in enumerate(dataset.data['markers']):
+                dataset.data['markers'][b] = batch[:, self.hparams['feature_columns_to_keep']]
+
         # load/predict probabilities from model
         probs_file = os.path.join(self.model_dir, '%s_states.npy' % sess_id)
         if os.path.exists(probs_file) and not overwrite:
@@ -407,6 +413,7 @@ class ReportGeneratorTraining(ReportGeneratorBase):
             video_framerate: Optional[Union[float, int]] = None,
             format: str = 'pdf',
             bout_example_kwargs: dict = {},
+            save_dir: str = 'diagnostics',
             **kwargs
     ):
 
@@ -430,6 +437,10 @@ class ReportGeneratorTraining(ReportGeneratorBase):
                 handler.load_features(dirname=input_type)
                 features = handler.features.vals
                 feature_names = handler.features.names
+                if self.hparams.get('feature_columns_to_keep', None) is not None:
+                    idxs_to_keep = self.hparams['feature_columns_to_keep']
+                    features = features[:, idxs_to_keep]
+                    feature_names = np.array(feature_names)[idxs_to_keep]
                 input_file = handler.features.path
 
             # compute states from features
@@ -484,7 +495,7 @@ class ReportGeneratorTraining(ReportGeneratorBase):
             train_metrics_file=os.path.join(self.model_dir, 'metrics.csv'),
             train_sess_ids=self.hparams['expt_ids'],
             video_framerate=video_framerate,
-            save_dir=os.path.join(self.model_dir, 'diagnostics'),
+            save_dir=os.path.join(self.model_dir, save_dir),
             format=format,
             bout_example_kwargs=bout_example_kwargs,
             **kwargs

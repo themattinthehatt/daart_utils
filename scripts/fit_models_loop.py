@@ -16,6 +16,7 @@ def run_main(args):
 
     if args.dataset == 'fish':
         from daart_utils.session_ids.fish import SESS_IDS_TRAIN_10 as sess_ids_list
+        from daart_utils.session_ids.fish import SESS_IDS_TEST as sess_ids_test
     elif args.dataset == 'fly':
         from daart_utils.session_ids.fly import SESS_IDS_TRAIN_5 as sess_ids_list
     elif args.dataset == 'ibl':
@@ -67,6 +68,7 @@ def run_main(args):
             else:
                 update_config(config_files['model'], 'model_class', 'segmenter')
             update_config(config_files['data'], 'expt_ids', sess_ids)
+            update_config(config_files['data'], 'expt_ids_test', sess_ids_test)
             update_config(config_files['data'], 'data_dir', os.path.join(data_path, args.dataset))
             update_config(config_files['data'], 'results_dir', os.path.join(results_path, args.dataset))
             if model_type == 'random-forest':

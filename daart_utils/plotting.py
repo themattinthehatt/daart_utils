@@ -350,7 +350,7 @@ def plot_rate_scatters(df, state_names, title=None, save_file=None, **kwargs):
     n_cols = 2
     n_rows = int(np.ceil(n_states / n_cols))
 
-    fig, axes = plt.subplots(n_cols, n_rows, figsize=(5 * n_cols, 4 * n_rows))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
     axes = axes.flatten()
     for ax in axes:
         ax.set_axis_off()
@@ -390,8 +390,9 @@ def plot_rate_scatters(df, state_names, title=None, save_file=None, **kwargs):
 
     if save_file:
         plt.savefig(save_file)
-
-    # plt.show()
+        plt.close()
+    else:
+        plt.show()
 
 
 def get_state_colors(n_colors=6):
@@ -665,8 +666,9 @@ def plot_bout_onsets_w_features(
 
     if save_file is not None:
         plt.savefig(save_file)
-
-    # plt.show()
+        plt.close()
+    else:
+        plt.show()
 
 
 def plotly_markers_and_states(

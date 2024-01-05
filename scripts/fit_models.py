@@ -13,7 +13,7 @@ from daart.io import export_hparams
 from daart.models import Segmenter
 from daart.testtube import get_all_params, print_hparams, create_tt_experiment, clean_tt_dir
 from daart.train import Trainer
-from daart.utils import build_data_generator
+from daart.utils import build_data_generator, collect_callbacks
 
 
 def run_main(hparams, *args):
@@ -70,23 +70,15 @@ def train_model(hparams):
 
     # pull class weights out of labeled training data
     if hparams.get('weight_classes', False):
-        pad = hparams['sequence_pad']
-        totals = np.zeros((hparams['output_size'],))
-        for dataset in data_gen.datasets:
-            for b, batch in enumerate(dataset.data['labels_strong']):
-                counts = np.bincount(batch[pad:-pad].astype('int'))
-                if len(counts) == len(totals):
-                    totals += counts
-                else:
-                    for i, c in enumerate(counts):
-                        totals[i] += c
-        totals[0] = 0  # get rid of background class
+        totals = data_gen.count_class_examples()
+        idx_background = hparams.get('ignore_class', 0)
+        totals[idx_background] = 0  # get rid of background class
         # select class weights by choosing class with max labeled examples to have a value of 1;
         # the remaining weights will be inversely proportional to their prevalence. For example, a
         # class that has half as many examples as the most prevalent will be weighted twice as much
         class_weights = np.max(totals) / (totals + 1e-10)
         class_weights[totals == 0] = 0
-        hparams['class_weights'] = [float(t) for t in class_weights]
+        hparams['class_weights'] = class_weights.tolist()  # needs to be list to save out to yaml
         print('class weights: {}'.format(class_weights))
     else:
         hparams['class_weights'] = None
@@ -158,36 +150,10 @@ def train_model(hparams):
         logging.info(model)
 
         # -------------------------------------
-        # set up training callbacks
-        # -------------------------------------
-        callbacks = []
-        if hparams['enable_early_stop']:
-            from daart.callbacks import EarlyStopping
-            # Note that patience does not account for val check interval values greater than 1;
-            # for example, if val_check_interval=5 and patience=20, then the model will train
-            # for at least 5 * 20 = 100 epochs before training can terminate
-            callbacks.append(EarlyStopping(patience=hparams['early_stop_history']))
-        if hparams.get('semi_supervised_algo', 'none') == 'pseudo_labels':
-            from daart.callbacks import AnnealHparam, PseudoLabels
-            if model.hparams['lambda_weak'] == 0:
-                print('warning! use lambda_weak in model.yaml to weight pseudo label loss')
-            else:
-                callbacks.append(AnnealHparam(
-                    hparams=model.hparams, key='lambda_weak', epoch_start=hparams['anneal_start'],
-                    epoch_end=hparams['anneal_end']))
-                callbacks.append(PseudoLabels(
-                    prob_threshold=hparams['prob_threshold'], epoch_start=hparams['anneal_start']))
-                # set min_epochs to when annealings ends
-                hparams['min_epochs'] = hparams['anneal_end']
-        if hparams.get('variational', False):
-            from daart.callbacks import AnnealHparam
-            callbacks.append(AnnealHparam(
-                hparams=model.hparams, key='kl_weight', epoch_start=0, epoch_end=100))
-
-        # -------------------------------------
         # train model + cleanup
         # -------------------------------------
         t_beg = time.time()
+        callbacks = collect_callbacks(hparams)
         trainer = Trainer(**hparams, callbacks=callbacks)
         trainer.fit(model, data_gen, save_path=model_save_path)
         t_end = time.time()

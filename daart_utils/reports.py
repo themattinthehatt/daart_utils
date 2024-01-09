@@ -462,7 +462,7 @@ class ReportGeneratorTraining(ReportGeneratorBase):
             states = states[:cutoff]
 
             # compute precision and recall
-            scores = get_precision_recall(states, states_pred, background=None)
+            scores = get_precision_recall(states, states_pred, background=None, n_classes=len(behaviors_to_keep) + 1)
 
             # store info
             df_dict = {'sess_id': sess_id}

@@ -189,7 +189,13 @@ def plot_bout_histograms(
     axes = axes.flatten()
     for a, ax in enumerate(axes):
         if a < len(bouts):
+            if len(bouts_[a]) == 0:
+                print(f'Warning: did not find any bouts for class {a}')
+                continue
             m = np.ceil(np.log10(np.nanmax(bouts_[a])))
+            if np.isnan(m):
+                print(f'Warning: encountered a NaN in bouts for class {a}: {bouts_[a]}')
+                continue
             bins = 10 ** (np.arange(0, m, m / 20))
             ax.hist(
                 bouts_[a],
